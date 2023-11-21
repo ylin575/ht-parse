@@ -50,6 +50,35 @@ ReadObject <- function(name){
 # the DGE folder. If you would like to use this function, please skip the code
 # block below and see the section "Reading in data with Seurat >= 4.1"
 
+DGE_folder <- "rawdata/all-sample/DGE_filtered"
+
+# split-pipe versions older than 1.1.0 used "DGE.mtx"
+mat <- readMM(paste0(DGE_folder, "count_matrix.mtx"))
+
+cell_meta <- read.delim(paste0(DGE_folder, "cell_metadata.csv"),
+                        stringsAsFactor = FALSE, sep = ",")
+genes <- read.delim(paste0(DGE_folder, "all_genes.csv"),
+                    stringsAsFactor = FALSE, sep = ",")
+
+cell_meta$bc_wells <- make.unique(cell_meta$bc_wells, sep = "_dup")
+rownames(cell_meta) <- cell_meta$bc_wells
+genes$gene_name <- make.unique(genes$gene_name, sep = "_dup")
+
+# Setting column and rownames to expression matrix
+colnames(mat) <- genes$gene_name
+rownames(mat) <- rownames(cell_meta)
+mat_t <- t(mat)
+
+# Remove empty rownames, if they exist
+mat_t <- mat_t[(rownames(mat_t) != ""),]
+
+# Seurat version 5 or greater uses "min.features" instead of "min.genes"
+pbmc <- CreateSeuratObject(mat_t, min.features = 100, min.cells = 2, meta.data = cell_meta)
+
+
+
+
+
 mat_path <- "rawdata/all-sample/DGE_filtered"
 mat <- ReadParseBio(mat_path)
 
@@ -60,7 +89,7 @@ rownames(mat)[rownames(mat) == ""] <- "unknown"
 # Read in cell meta data
 cell_meta <- read.csv(paste0(mat_path, "/cell_metadata.csv"), row.names = 1)
 
-# Create object
+# Create seurat object
 hthy <- CreateSeuratObject(mat, min_genes = 100, min_cells = 100,
                            names.feild = 0, meta.data = cell_meta)
 
