@@ -50,10 +50,10 @@ ReadObject <- function(name){
 # the DGE folder. If you would like to use this function, please skip the code
 # block below and see the section "Reading in data with Seurat >= 4.1"
 
-mat_path <- "all-sample/DGE_filtered"
+mat_path <- "rawdata/all-sample/DGE_filtered"
 mat <- ReadParseBio(mat_path)
 
-# Check to see if empty gene names are present, add name if so.
+# Check to see if empty gene names are present, add name if name is absent
 table(rownames(mat) == "")
 rownames(mat)[rownames(mat) == ""] <- "unknown"
 
@@ -67,7 +67,7 @@ hthy <- CreateSeuratObject(mat, min_genes = 100, min_cells = 100,
 
 # When we create our Seurat object the plate well numbers (column names in the 
 # expression matrix) from the experiment will automatically be assigned to the 
-# cell identity slot. In other words, the program assumes this how we want to 
+# cell identity slot. In other words, the program assumes this is how we want to 
 # initially classify our cells. In general, we would like to avoid this behavior 
 # so there isn't a bias towards a particular cell class when removing outliers.
 
@@ -81,13 +81,15 @@ SaveObject(hthy, "seurat_obj_before_QC")
 hthy <- ReadObject("seurat_obj_before_QC")
 
 # use saveRSD instead
-saveRDS(hthy, file = "output/seurat_obj_before_QC.rds")
+saveRDS(hthy, file = "data/rds_objects/seurat_obj_before_QC_231120.rds")
 
 #Cell QC
 
 hthy[["percent.mt"]] <- PercentageFeatureSet(hthy, pattern = "^MT-")
-plot <- VlnPlot(hthy, pt.size = 0.10,
-                features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+plot <- VlnPlot(hthy, pt.size = 0,
+                features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+                ncol = 3)
+plot
 # SaveFigure(plot, "vln_QC", width = 12, height = 6)
 
 # plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt")
@@ -100,6 +102,7 @@ plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt",
 plot2 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
                         group.by = "sample")
 
+plot1 + plot2
 # Visualize QC metrics as histograms, find best cut off point
 
 # nFeature_RNA
@@ -144,7 +147,7 @@ hist(hthy@meta.data$percent.mt[hthy@meta.data$sample=="Ht14"],
      breaks=200, xlim=c(0,60),
      xlab = "percent.mt", ylab = "Frequency", main = "HT14")
 
-# Compare QC metrics across samples
+# Compare QC metrics across samples using boxplot
 boxplot(hthy@meta.data$nCount_RNA ~ hthy@meta.data$sample, 
           xlab = "sample #", ylab = "nCount_RNA")
 boxplot(hthy@meta.data$nFeature_RNA ~ hthy@meta.data$sample, 
@@ -153,11 +156,11 @@ boxplot(hthy@meta.data$percent.mt ~ hthy@meta.data$sample,
         xlab = "sample #", ylab = "percent.mt")
 
 #violin plot in linear scale
-VlnPlot(hthy, pt.size = 0.001, group.by = "sample",
+VlnPlot(hthy, pt.size = 0, group.by = "sample",
         features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
         ncol = 3)
 #violin plot in log scale
-VlnPlot(hthy, pt.size = 0.001, group.by = "sample", log = TRUE,
+VlnPlot(hthy, pt.size = 0, group.by = "sample", log = TRUE,
         features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
         ncol = 3)
 

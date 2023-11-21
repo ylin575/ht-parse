@@ -1,6 +1,7 @@
 rawdata/
 data/
 .DS_Store
+*/.DS_Store
 
 # History files
 .Rhistory
