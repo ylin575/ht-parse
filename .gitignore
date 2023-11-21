@@ -1,7 +1,12 @@
+# files and folders to ignore
 rawdata/
 data/
 .DS_Store
-*/.DS_Store
+**/.DS_Store
+
+
+
+# below are defaults from github git ignore for R
 
 # History files
 .Rhistory
