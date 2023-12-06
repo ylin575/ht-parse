@@ -277,9 +277,33 @@ lower.feature <- mean(ht14@meta.data$nFeature_RNA) - 3*sd(ht14@meta.data$nFeatur
 ht14_sub <- subset(ht14, subset = percent.mt >= lower.mt & percent.mt <= upper.mt)
 ht14_sub <- subset(ht14_sub, subset = nFeature_RNA >= lower.feature & nFeature_RNA <= upper.feature)
 
+dim(ht9_sub)
+dim(ht11_sub)
+dim(ht12_sub)
+dim(ht14_sub)
+# based on the dimensions above, determined that ht12 has 8032 cells, the lowest
 
-# merge the filtered samples back into one seurat object
+# downsample to 8032 cells for each sample
+ht9_sub <- subset(ht9_sub, downsample = 8032)
+ht11_sub <- subset(ht11_sub, downsample = 8032)
+ht12_sub <- subset(ht12_sub, downsample = 8032)
+ht14_sub <- subset(ht14_sub, downsample = 8032)
+
+# merge the filtered and downsampled samples back into one seurat object
 hthy <- merge(x = ht9_sub, y = list(ht11_sub, ht12_sub, ht14_sub))
+
+# check dimensions of hthy
+dim(hthy)
+
+# rejoin the layers after merging, this step seems to take a few minutes
+
+# error when running the code below to rejoin the layers
+hthy[["RNA"]] <- JoinLayers(hthy)
+# Error in `[<-.data.frame`(`*tmp*`, , i, value = new("Seurat", assays = 
+# list( : replacement has 39655 rows, data has 32128
+# note that after this code is done running, the dim(hthy) returns the expected
+# dimension of 39655 rows and 32128 columns
+
 
 # save new seurat object into a rds object
 saveRDS(hthy, file = "data/rds_objects/seurat_obj_after_QC_231206.rds")
