@@ -354,7 +354,6 @@ DimHeatmap(rna, dims = 1:15, cells = 500, balanced = TRUE)
 
 # determine dimensionality of the dataset
 # seurat clusters cells based on their PCA scores
-# more of an art than exact science
 # methods: heatmap, JackStraw plot, Elbow plot
 
 # JackStraw Plot (can take long time for big data sets)

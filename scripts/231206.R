@@ -117,9 +117,11 @@ hthy <- ReadObject("seurat_obj_before_QC")
 saveRDS(hthy, file = "data/rds_objects/seurat_obj_before_QC_231120.rds")
 
 
-#Cell QC: add mitochondrial percentage to metadata
+# Cell QC: add mitochondrial percentage to metadata
 
 hthy[["percent.mt"]] <- PercentageFeatureSet(hthy, pattern = "^MT-")
+
+# QC plots
 plot <- VlnPlot(hthy, pt.size = 0,
                 features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
                 ncol = 3)
@@ -336,9 +338,14 @@ plot1 + plot2
 # scaling using default # of features, i.e. from FindVariableFeatures
 #rna <- ScaleData(rna)
 
-# perform scalings
-all.genes <- rownames(rna)
-rna <- ScaleData(rna, features = all.genes)
+# perform scalings, not using all genes
+rna <- ScaleData(rna)
+
+# perform scalings using all genes (use too much ram)
+# all.genes <- rownames(rna)
+# rna <- ScaleData(rna, features = all.genes)
+
+
 
 # scaling with regressing out mt percent, using SCTransform
 # rna <- SCTransform(rna, vars.to.regress = "percent.mt")
@@ -357,9 +364,12 @@ rna <- ScaleData(rna, features = all.genes)
 
 
 # perform linear dimensional reduction - run PCA
-#> what PCA does
-#>    PC1 is more important thatn PC2, than PC3, ..., so on
+#> what PCA does is explaining the variance in the data
+#>    PC1 explains the most variance, followed by PC2, than PC3, ..., so on
 rna <- RunPCA(rna, features = VariableFeatures(object = rna))
+
+# save seurat object after running pca
+saveRDS(rna, file = "data/rds_objects/seurat_obj_after_run_pca_231206.rds")
 
 # examine the PCA results in 4 ways
 
@@ -379,7 +389,6 @@ DimHeatmap(rna, dims = 1:15, cells = 500, balanced = TRUE)
 
 # determine dimensionality of the dataset
 # seurat clusters cells based on their PCA scores
-# more of an art than exact science
 # methods: heatmap, JackStraw plot, Elbow plot
 
 # JackStraw Plot (can take long time for big data sets)
@@ -388,13 +397,13 @@ DimHeatmap(rna, dims = 1:15, cells = 500, balanced = TRUE)
 # JackStrawPlot(rna, dims = 1:20)
 # 
 # # Elbow plot
-# ElbowPlot(rna, ndims = 50)
+ElbowPlot(rna, ndims = 50)
 
 
 # cluster the cells
 
 # first construct a KNN graph based on the euclidean distance in PCA space, and
-# refine the edge weights between any two cells base don the shared overlap in
+# refine the edge weights between any two cells based on the shared overlap in
 # their local neighborhoods (Jaccard similarity), using the FindNeighbors() function
 rna <- FindNeighbors(rna, dims = 1:20)
 
@@ -412,12 +421,15 @@ rna <- RunUMAP(rna, dims = 1:20)
 # note that you can set `label = TRUE` or use the LabelClusters function to help
 # label individual clusters
 DimPlot(rna, reduction = "umap", label = TRUE)
+DimPlot(rna, reduction = "umap", label = TRUE, group.by = "sample")
+DimPlot(rna, reduction = "umap", label = TRUE, split.by = "sample")
 
 # You can save the object at this point so that it can easily be loaded back in 
 # without having to rerun the computationally intensive steps performed above, or
 # easily shared with collaborators.
 # saveRDS seems not able to create new folders, so must create 'output' folder another way
 # saveRDS(pbmc, file = "output/230913 analysis/pbmc_tutorial.rds")
+saveRDS(rna, file = "data/rds_objects/seurat_obj_after_run_umap_231206.rds")
 
 
 # ways to finding markers that define each cluster
@@ -456,9 +468,18 @@ FeaturePlot(rna, features = cTEC)
 FeaturePlot(rna, features = Lymphoid)
 FeaturePlot(rna, features = Myeloid)
 
+# plot gene expression heatmap on top of UMAP clusters split by sample
+FeaturePlot(rna, features = "AIRE", label = TRUE, split.by = "sample")
+FeaturePlot(rna, features = "HLA-DRA", label = TRUE, split.by = "sample")
+FeaturePlot(rna, features = "PRSS16", label = TRUE, split.by = "sample")
+FeaturePlot(rna, features = "LY75", label = TRUE, split.by = "sample")
+FeaturePlot(rna, features = "PTPRC", label = TRUE, split.by = "sample")
+
 
 # you can plot raw counts as well
 VlnPlot(rna, features = mTEC, slot = "counts", log = TRUE)
+
+
 
 # DoHeatmap() generates an expression heatmap for given cells and features. In 
 # this case, we are plotting the top 20 markers (or all markers if less than 20) 
@@ -521,43 +542,9 @@ DimPlot(rna, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 
 
 # save final object
-saveRDS(rna, file = "output/YL01_analysis_230920_renamed-clusters.rds")
+saveRDS(rna, file = "output/231206_renamed-clusters.rds")
 
 sessionInfo()
 
 
-###############################################################################
 
-#> 1. select Aire+ mTECs, Aire- mTECs, and cTECs
-
-cTECs <- subset(x = rna, idents = c("cTECs_1", "cTECs_2", "cTECs_3"))
-DimPlot(cTECs, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
-
-mTECs.aire_neg <- subset(x = rna, idents = c("mTECs_1", "mTECs_3", "mTECs_4 (proliferating)"))
-
-mTECs.aire_pos <- subset(x = rna, idents = c("mTECs_2 (Aire+)"))
-
-# VlnPlot(cTECs, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-# VlnPlot(mTECs.aire_neg, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-# VlnPlot(mTECs.aire_pos, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
-
-mTECs.aire_pos_df <- GetAssayData(object = mTECs.aire_pos, slot = "counts")
-
-nrow(mTECs.aire_pos_df)
-ncol(mTECs.aire_pos_df)
-
-draw10 <- sample(ncol(mTECs.aire_pos_df), 10, replace = FALSE)
-draw_cell <- colnames(mTECs.aire_pos_df[,draw10])
-
-mTECs.aire_pos_dfdf <- as.data.frame(mTECs.aire_pos_df)
-mTECs.aire_pos_dfdf[,1]
-
-?select
-
-
-
-#> 2. randomly sample cells (10 cells, 20 cells, 40, 80, 160, ...)
-#> 3. sum TRA count for 10 cell sample, 20 cell sample, 40, 80, ...
-#> 4. replicate steps 3 & 4
-#> 5. plot x = # of cells, y = TRA count
-#> proportion of Aire+/Aire- cells per medulla
