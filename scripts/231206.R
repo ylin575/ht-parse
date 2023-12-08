@@ -232,6 +232,12 @@ VlnPlot(hthy, pt.size = 0, group.by = "sample", log = TRUE,
 #   hthy2 <- merge(hthy, filtered_data)
 # }
 
+# check dimension of hthy
+hthy
+dim(hthy)
+dim(hthy@assays)
+dim(hthy@meta.data)
+
 
 # subset and calculate mean and 3*SD for percent.mt and nFeature_RNA, then
 # downsample
@@ -279,6 +285,12 @@ lower.feature <- mean(ht14@meta.data$nFeature_RNA) - 3*sd(ht14@meta.data$nFeatur
 ht14_sub <- subset(ht14, subset = percent.mt >= lower.mt & percent.mt <= upper.mt)
 ht14_sub <- subset(ht14_sub, subset = nFeature_RNA >= lower.feature & nFeature_RNA <= upper.feature)
 
+
+dim(ht9)
+dim(ht11)
+dim(ht12)
+dim(ht14)
+
 dim(ht9_sub)
 dim(ht11_sub)
 dim(ht12_sub)
@@ -300,7 +312,7 @@ dim(hthy)
 # rejoin the layers after merging, this step seems to take a few minutes
 
 # error when running the code below to rejoin the layers
-hthy[["RNA"]] <- JoinLayers(hthy)
+hthy[["RNA"]] <- JoinLayers(hthy[["RNA"]])
 # Error in `[<-.data.frame`(`*tmp*`, , i, value = new("Seurat", assays = 
 # list( : replacement has 39655 rows, data has 32128
 # note that after this code is done running, the dim(hthy) returns the expected
