@@ -1,0 +1,54 @@
+
+
+
+
+
+Analysis Type:	PANTHER Overrepresentation Test (Released 20231017)
+Annotation Version and Release Date:	GO Ontology database DOI:  10.5281/zenodo.8436609 Released 2023-10-09
+Analyzed List:	upload_1 (Homo sapiens)
+Reference List:	Homo sapiens (all genes in database)
+Test Type:	FISHER
+Correction:	FDR
+GO molecular function complete	Homo sapiens - REFLIST (20592)	upload_1 (576)	upload_1 (expected)	upload_1 (over/under)	upload_1 (fold Enrichment)	upload_1 (raw P-value)	upload_1 (FDR)
+structural constituent of chromatin (GO:0030527)	63	46	1.76	+	26.10	4.55E-43	2.31E-39
+ligase activity, forming carbon-oxygen bonds (GO:0016875)	42	19	1.17	+	16.17	1.39E-15	1.18E-12
+aminoacyl-tRNA ligase activity (GO:0004812)	42	19	1.17	+	16.17	1.39E-15	1.01E-12
+dynein light chain binding (GO:0045503)	9	4	.25	+	15.89	3.19E-04	3.85E-02
+nucleosomal DNA binding (GO:0031492)	40	16	1.12	+	14.30	1.12E-12	7.09E-10
+aminoacyl-tRNA editing activity (GO:0002161)	13	5	.36	+	13.75	9.36E-05	1.58E-02
+nucleosome binding (GO:0031491)	70	16	1.96	+	8.17	1.22E-09	5.63E-07
+ATP-dependent protein folding chaperone (GO:0140662)	40	7	1.12	+	6.26	2.60E-04	3.22E-02
+catalytic activity, acting on a tRNA (GO:0140101)	133	20	3.72	+	5.38	6.84E-09	2.89E-06
+chromatin DNA binding (GO:0031490)	122	17	3.41	+	4.98	2.46E-07	7.35E-05
+ligase activity (GO:0016874)	173	22	4.84	+	4.55	1.92E-08	7.49E-06
+tRNA binding (GO:0000049)	80	10	2.24	+	4.47	1.67E-04	2.29E-02
+protein heterodimerization activity (GO:0046982)	326	38	9.12	+	4.17	1.43E-12	8.05E-10
+structural molecule activity (GO:0005198)	794	56	22.21	+	2.52	1.03E-09	5.22E-07
+Unclassified (UNCLASSIFIED)	2302	157	64.39	+	2.44	2.33E-25	2.36E-22
+protein dimerization activity (GO:0046983)	1081	56	30.24	+	1.85	1.97E-05	4.16E-03
+molecular_function (GO:0003674)	18290	419	511.61	-	.82	2.33E-25	2.95E-22
+binding (GO:0005488)	16632	347	465.23	-	.75	5.92E-29	1.00E-25
+ion binding (GO:0043167)	6145	113	171.89	-	.66	4.18E-08	1.51E-05
+protein binding (GO:0005515)	14435	254	403.78	-	.63	3.21E-37	8.13E-34
+cation binding (GO:0043169)	4443	73	124.28	-	.59	7.00E-08	2.37E-05
+metal ion binding (GO:0046872)	4352	71	121.73	-	.58	7.43E-08	2.36E-05
+catalytic activity, acting on a protein (GO:0140096)	2343	35	65.54	-	.53	2.32E-05	4.71E-03
+transcription regulator activity (GO:0140110)	1983	28	55.47	-	.50	3.72E-05	6.99E-03
+molecular function regulator activity (GO:0098772)	2093	29	58.55	-	.50	1.58E-05	3.49E-03
+sequence-specific DNA binding (GO:0043565)	1689	23	47.24	-	.49	9.72E-05	1.54E-02
+DNA-binding transcription factor activity, RNA polymerase II-specific (GO:0000981)	1375	17	38.46	-	.44	1.16E-04	1.78E-02
+identical protein binding (GO:0042802)	2189	27	61.23	-	.44	5.64E-07	1.59E-04
+transporter activity (GO:0005215)	1250	15	34.97	-	.43	2.29E-04	2.97E-02
+transmembrane transporter activity (GO:0022857)	1131	13	31.64	-	.41	2.44E-04	3.09E-02
+transmembrane signaling receptor activity (GO:0004888)	1338	15	37.43	-	.40	4.24E-05	7.68E-03
+signaling receptor binding (GO:0005102)	1526	16	42.69	-	.37	3.01E-06	7.28E-04
+molecular transducer activity (GO:0060089)	1562	15	43.69	-	.34	6.86E-07	1.83E-04
+signaling receptor activity (GO:0038023)	1562	15	43.69	-	.34	6.86E-07	1.74E-04
+lipid binding (GO:0008289)	850	7	23.78	-	.29	9.59E-05	1.57E-02
+molecular function activator activity (GO:0140677)	1131	9	31.64	-	.28	3.41E-06	7.86E-04
+phosphotransferase activity, alcohol group as acceptor (GO:0016773)	691	4	19.33	-	.21	6.80E-05	1.19E-02
+receptor ligand activity (GO:0048018)	507	2	14.18	-	.14	1.51E-04	2.18E-02
+signaling receptor activator activity (GO:0030546)	514	2	14.38	-	.14	1.57E-04	2.21E-02
+protein kinase activity (GO:0004672)	581	2	16.25	-	.12	2.48E-05	4.84E-03
+DNA-binding transcription repressor activity, RNA polymerase II-specific (GO:0001227)	329	0	9.20	-	 < 0.01	2.14E-04	2.86E-02
+DNA-binding transcription repressor activity (GO:0001217)	338	0	9.45	-	 < 0.01	1.41E-04	2.10E-02

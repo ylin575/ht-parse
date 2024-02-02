@@ -1,6 +1,7 @@
 # files and folders to ignore
 rawdata/
 data/
+tmp_fastqs/
 **/.DS_Store
 
 
