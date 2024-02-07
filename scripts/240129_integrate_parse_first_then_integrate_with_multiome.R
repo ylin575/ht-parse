@@ -386,9 +386,9 @@ sum(parse_unique2 %in% multiome_unique2)
 # MYH16 is found only in parse dataset
 "MYH16" %in% parse_features2
 "MYH16" %in% multiome_features2
-# OR4F5 is found only in multiome dataset
-"OR4F5" %in% parse_features2
-"OR4F5" %in% multiome_features2
+# AL645608.1 is found only in multiome dataset
+"AL645608.1" %in% parse_features2
+"AL645608.1" %in% multiome_features2
 # export the list of unique genes from parse and multiome
 write.csv(parse_unique2, file = "parse_unique_features.csv")
 write.csv(multiome_unique2, file = "multiome_unique_features.csv")
