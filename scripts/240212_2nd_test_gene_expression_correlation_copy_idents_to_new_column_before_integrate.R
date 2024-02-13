@@ -383,6 +383,7 @@ FeaturePlot(ht11wi, reduction = "umap", features = "AIRE", split.by = "samples")
 FeaturePlot(ht11wi, reduction = "umap", features = "PRSS16", split.by = "samples")
 FeaturePlot(ht11wi, reduction = "umap", features = "PSMB11", split.by = "samples")
 FeaturePlot(ht11wi, reduction = "umap", features = "LY75", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "MKI67", split.by = "samples")
 
 
 # save seurat object before trying label transfer
@@ -500,7 +501,7 @@ ht11.query <- AddMetaData(ht11.query, metadata = predictions)
 
 # Visualization
 DimPlot(ht11.query, reduction = "umap")
-DimPlot(ht11..query, reduction = "umap", group.by = "samples")
+DimPlot(ht11.query, reduction = "umap", group.by = "samples")
 DimPlot(ht11.ref, reduction = "umap", group.by = "samples")
 DimPlot(ht11.query, reduction = "umap", split.by = "samples")
 DimPlot(ht11.ref, reduction = "umap", split.by = "samples")
@@ -598,6 +599,17 @@ predictions <- TransferData(anchorset = ht11.anchors,
                             dims = 1:30)
 ht11.query <- AddMetaData(ht11.query, metadata = predictions)
 
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                    reduction = "integrated.cca", 
+                    return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                       reference = ht11.ref, 
+                       query = ht11.query,
+                       refdata = list(celltype = "celltype"), 
+                       reference.reduction = "pca", reduction.model = "umap")
+
+
 test11.query <- ht11.query
 test11.ref <- ht11.ref
 Idents(test11.query) <- "predicted.celltype"
@@ -675,3 +687,242 @@ plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
 
 
 # =================================
+
+
+# START SCRIPT 240212 correlate gene expression between parse and multiome
+# test alternatively analysis sequence
+# copy idents to new column celltypes before merging > integrate >...>runUMAP
+# 
+
+
+# load data
+hthy2wi <- readRDS(file = "data/rds_objects/240205_all_7samples_integrated-pre_label_transfer.rds")
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+
+ht11.ref <- subset(ht11wi, orig.ident == "SeuratProject")
+ht11.query <- subset(ht11wi, orig.ident == "hthy")
+
+ht11.anchors <- FindTransferAnchors(reference = ht11.ref, 
+                                    query = ht11.query,
+                                    dims = 1:30, 
+                                    reference.reduction = "pca")
+predictions <- TransferData(anchorset = ht11.anchors, 
+                            refdata = ht11.ref$celltype, 
+                            dims = 1:30)
+ht11.query <- AddMetaData(ht11.query, metadata = predictions)
+
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                    reduction = "integrated.cca", 
+                    return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                       reference = ht11.ref, 
+                       query = ht11.query,
+                       refdata = list(celltype = "celltype"), 
+                       reference.reduction = "pca", reduction.model = "umap")
+
+test11.query <- ht11.query
+test11.ref <- ht11.ref
+
+# combine celltype and predicted.celltype columns into a new column called celltypes
+test11.query@meta.data <- test11.query@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+test11.ref@meta.data <- test11.ref@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+
+# Idents(test11.query) <- "predicted.celltype"
+# Idents(test11.ref) <- "celltype"
+
+ht11wi.remerged <- merge(x = test11.query, y = test11.ref)
+ht11wi.remerged <- NormalizeData(ht11wi.remerged)
+ht11wi.remerged <- FindVariableFeatures(ht11wi.remerged)
+ht11wi.remerged <- ScaleData(ht11wi.remerged)
+ht11wi.remerged <- RunPCA(ht11wi.remerged, 
+                          features = VariableFeatures(object = ht11wi.remerged))
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5, 
+                     cluster.name = "unintegrated_clusters")
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                    reduction.name = "umap.unintegrated")
+
+ht11wi.remerged <- IntegrateLayers(object = ht11wi.remerged, 
+                                   method = CCAIntegration, 
+                                   orig.reduction = "pca", 
+                                   new.reduction = "integrated.cca",
+                                   verbose = FALSE)
+# 240207 layer integration took 6m 28s
+
+# re-join layers after integration
+ht11wi.remerged[["RNA"]] <- JoinLayers(ht11wi.remerged[["RNA"]])
+
+
+# analyze post integration
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, reduction = "integrated.cca",
+                                 dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5)
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                           reduction = "integrated.cca")
+
+#plot graphs before combining sample IDs
+DimPlot(ht11wi, reduction = "umap", group.by = "sample")
+DimPlot(ht11wi, reduction = "umap", group.by = "batch")
+DimPlot(ht11wi, reduction = "umap", group.by = "samples")
+DimPlot(ht11wi, reduction = "umap", split.by = "samples")
+
+FeaturePlot(ht11wi, reduction = "umap", features = "AIRE", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PRSS16", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PSMB11", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "LY75", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "MKI67", split.by = "samples")
+
+
+#mtec.2 <- FindConservedMarkers(ht11wi.remerged, ident.1 = "mTEC II", 
+#                               grouping.var = "orig.ident", verbose = FALSE)
+#head(mtec.2)
+
+library(ggplot2)
+library(cowplot)
+theme_set(theme_cowplot())
+
+aggregate_ht11wi <- AggregateExpression(ht11wi.remerged, group.by = c("orig.ident", "celltypes"), return.seurat = TRUE)
+# genes.to.label = c("ISG15", "LY6E", "IFI6", "ISG20", "MX1", "IFIT2", "IFIT1", 
+#                    "CXCL10", "CCL8")
+
+# list of the cell type annotations
+# [1] "mcTEC"              "cTEC-late"          "mTEC I"             "cTEC-early"        
+# [5] "heteroTEC"          "mTEC II"            "neuroendocrine I"   "sTEC I"            
+# [9] "transit-amplifying" "muscle"             "neuroendocrine II"  "ionocyte II"       
+# [13] "neuro"              "ionocyte I"         "tuft"               "sTEC II" 
+
+p1 <- CellScatter(aggregate_ht11wi, "hthy_mcTEC", "SeuratProject_mcTEC")
+p2 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-late", "SeuratProject_cTEC-late")
+p3 <- CellScatter(aggregate_ht11wi, "hthy_mTEC I", "SeuratProject_mTEC I")
+p4 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-early", "SeuratProject_cTEC-early")
+p5 <- CellScatter(aggregate_ht11wi, "hthy_heteroTEC", "SeuratProject_heteroTEC")
+p6 <- CellScatter(aggregate_ht11wi, "hthy_mTEC II", "SeuratProject_mTEC II")
+p7 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine I", "SeuratProject_neuroendocrine I")
+p8 <- CellScatter(aggregate_ht11wi, "hthy_transit-amplifying", "SeuratProject_transit-amplifying")
+p9 <- CellScatter(aggregate_ht11wi, "hthy_muscle", "SeuratProject_muscle")
+p10 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine II", "SeuratProject_neuroendocrine II")
+p11 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte II", "SeuratProject_ionocyte II")
+p12 <- CellScatter(aggregate_ht11wi, "hthy_neuro", "SeuratProject_neuro")
+p13 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte I", "SeuratProject_ionocyte I")
+p14 <- CellScatter(aggregate_ht11wi, "hthy_tuft", "SeuratProject_tuft")
+p15 <- CellScatter(aggregate_ht11wi, "hthy_sTEC II", "SeuratProject_sTEC II")
+p16 <- CellScatter(aggregate_ht11wi, "hthy_sTEC I", "SeuratProject_sTEC I")
+
+# p14-16 cannot be generated: error: too few variables passed
+plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
+
+
+# extract features list from parse as a character vector
+parse_features <- as.data.frame(ht11_sub@assays$RNA@features@dimnames[1])[,1]
+# extract features list from multiome as a character vector
+multiome_features <- as.data.frame(ref2@assays$RNA@counts@Dimnames[1])[,1]
+# might be better way: temp2 <- as.data.frame(reference@assays$RNA@counts@Dimnames[1])
+
+# extract features common in parse and multiome dataset
+common_features <- intersect(parse_features, multiome_features)
+# extract features unique to parse dataset
+parse_unique <- parse_features[!(parse_features %in% multiome_features)]
+multiome_unique <- multiome_features[!(multiome_features %in% parse_features)]
+# check to see if the unique sets are truly unique
+sum(parse_unique %in% multiome_unique)
+# MYH16 is found only in parse dataset
+"MYH16" %in% parse_features
+"MYH16" %in% multiome_features
+# AL645608.1 is found only in multiome dataset
+"AL645608.1" %in% parse_features
+"AL645608.1" %in% multiome_features
+# export the list of unique genes from parse and multiome
+write.csv(parse_unique, file = "parse_unique_features.csv")
+write.csv(multiome_unique, file = "multiome_unique_features.csv")
+
+# ========
+
+
+ht11.common <- subset(ht11wi.remerged, features = common_features)
+
+aggregate_ht11wi_common <- AggregateExpression(ht11.common, group.by = c("orig.ident", "celltypes"), return.seurat = TRUE)
+# genes.to.label = c("ISG15", "LY6E", "IFI6", "ISG20", "MX1", "IFIT2", "IFIT1", 
+#                    "CXCL10", "CCL8")
+
+# list of the cell type annotations
+# [1] "mcTEC"              "cTEC-late"          "mTEC I"             "cTEC-early"        
+# [5] "heteroTEC"          "mTEC II"            "neuroendocrine I"   "sTEC I"            
+# [9] "transit-amplifying" "muscle"             "neuroendocrine II"  "ionocyte II"       
+# [13] "neuro"              "ionocyte I"         "tuft"               "sTEC II" 
+
+p1 <- CellScatter(aggregate_ht11wi_common, "hthy_mcTEC", "SeuratProject_mcTEC")
+p2 <- CellScatter(aggregate_ht11wi_common, "hthy_cTEC-late", "SeuratProject_cTEC-late")
+p3 <- CellScatter(aggregate_ht11wi_common, "hthy_mTEC I", "SeuratProject_mTEC I")
+p4 <- CellScatter(aggregate_ht11wi_common, "hthy_cTEC-early", "SeuratProject_cTEC-early")
+p5 <- CellScatter(aggregate_ht11wi_common, "hthy_heteroTEC", "SeuratProject_heteroTEC")
+p6 <- CellScatter(aggregate_ht11wi_common, "hthy_mTEC II", "SeuratProject_mTEC II")
+p7 <- CellScatter(aggregate_ht11wi_common, "hthy_neuroendocrine I", "SeuratProject_neuroendocrine I")
+p8 <- CellScatter(aggregate_ht11wi_common, "hthy_transit-amplifying", "SeuratProject_transit-amplifying")
+p9 <- CellScatter(aggregate_ht11wi_common, "hthy_muscle", "SeuratProject_muscle")
+p10 <- CellScatter(aggregate_ht11wi_common, "hthy_neuroendocrine II", "SeuratProject_neuroendocrine II")
+p11 <- CellScatter(aggregate_ht11wi_common, "hthy_ionocyte II", "SeuratProject_ionocyte II")
+p12 <- CellScatter(aggregate_ht11wi_common, "hthy_neuro", "SeuratProject_neuro")
+p13 <- CellScatter(aggregate_ht11wi_common, "hthy_ionocyte I", "SeuratProject_ionocyte I")
+p14 <- CellScatter(aggregate_ht11wi_common, "hthy_tuft", "SeuratProject_tuft")
+p15 <- CellScatter(aggregate_ht11wi_common, "hthy_sTEC II", "SeuratProject_sTEC II")
+p16 <- CellScatter(aggregate_ht11wi_common, "hthy_sTEC I", "SeuratProject_sTEC I")
+
+# p14-16 cannot be generated: error: too few variables passed
+plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
+
+
+
+
+plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+# SaveFigure((plot1 + plot2),"scatter_QC", width = 12, height = 6, res = 200)
+
+# feature scatter
+plot1 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "percent.mt",
+                        split.by = "samples")
+plot2 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+plot3 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "subsets_Mito_percent",
+                        split.by = "samples")
+plot4 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+
+
+plot1 + plot3
+plot2 + plot4
+
+plot5 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "percent.mt",
+                        split.by = "samples")
+plot6 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+plot7 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "subsets_Mito_percent",
+                        split.by = "samples")
+plot8 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+
+
+plot5 + plot7
+plot6 + plot8
+
+mean(ht11wi.remerged@meta.data$nFeature_RNA[ht11wi.remerged@meta.data$samples == "HT11"])
+mean(ht11wi.remerged@meta.data$nFeature_RNA[ht11wi.remerged@meta.data$samples == "20230505_YL01"])
+
+plot9 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "celltypes",
+                        group.by = "samples")
+plot9
+
+# 240212 END OF SCRIPT
+
