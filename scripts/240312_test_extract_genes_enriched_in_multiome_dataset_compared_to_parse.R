@@ -1248,3 +1248,11 @@ write.csv(neuroendocrine_I, paste(getwd(), "/neuroendocrine_I.csv", sep=""))
 write.csv(neuroendocrine_II, paste(getwd(), "/neuroendocrine_II.csv", sep=""))
 write.csv(sTEC_I, paste(getwd(), "/sTEC_I.csv", sep=""))
 write.csv(transit_amplifying, paste(getwd(), "/transit_amplifying.csv", sep=""))
+
+a <- transit_amplifying
+a <- a |>
+  filter(a[,2] >2, a[,1] < 1)
+plot(x = a[,1], y = a[,2],
+     xlim = c(0,6),
+     ylim = c(0,6))
+write.csv(a, paste(getwd(), "/transit_amplifying_more_filtered.csv", sep=""))
