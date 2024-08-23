@@ -1,0 +1,1439 @@
+# Loading libraries and setting location paths
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+
+# remove all objects (variables, functions, etc.) from the current working 
+# environment or session.
+rm(list = ls())
+
+# data_path <- "/volume-general/analysis/data/pbmc/"
+# fig_path <- "/volume-general/analysis/figures/pbmc/seurat/"
+
+
+# Below we've included a few convenience functions for saving images and 
+# reading/writing your Seurat object to disk. When you're working with larger 
+# datasets, it's usually a good idea to save your progress after computationally 
+# intensive steps so you can back track if you wish to do so.
+
+# Convenience functions
+SaveFigure <- function(plots, name, type = "png", width, height, res){
+  if(type == "png") {
+    png(paste0(fig_path, name, ".", type),
+        width = width, height = height, units = "in", res = 200)
+  } else {
+    pdf(paste0(fig_path, name, ".", type),
+        width = width, height = height)
+  }
+  print(plots)
+  dev.off()
+}
+
+SaveObject <- function(object, name){
+  saveRDS(object, paste0(data_path, name, ".RDS"))
+}
+
+ReadObject <- function(name){
+  readRDS(paste0(data_path, name, ".RDS"))
+}
+
+
+# Reading in data
+
+# After reading in the data we'll perform basic filtering a on our expression 
+# matrix to remove low quality cells and uninformative genes. The parameter 
+# "min_genes" will keep cells that have at least 300 genes, and similarly, 
+# "min_cells" will keep genes that are expressed in at least 5 cells. 
+# Note: Seurat version 4.1 includes a convenience function to read Parse data from 
+# the DGE folder. If you would like to use this function, please skip the code
+# block below and see the section "Reading in data with Seurat >= 4.1"
+
+
+DGE_folder <- "rawdata/all-sample/DGE_filtered/"
+
+mat <- readMM(paste0(DGE_folder, "count_matrix.mtx"))
+
+cell_meta <- read.delim(paste0(DGE_folder, "cell_metadata.csv"),
+                        stringsAsFactor = FALSE, sep = ",")
+genes <- read.delim(paste0(DGE_folder, "all_genes.csv"),
+                    stringsAsFactor = FALSE, sep = ",")
+
+cell_meta$bc_wells <- make.unique(cell_meta$bc_wells, sep = "_dup")
+rownames(cell_meta) <- cell_meta$bc_wells
+genes$gene_name <- make.unique(genes$gene_name, sep = "_dup")
+
+# Setting column and rownames to expression matrix
+colnames(mat) <- genes$gene_name
+rownames(mat) <- rownames(cell_meta)
+mat_t <- t(mat)
+
+# Remove empty rownames, if they exist
+mat_t <- mat_t[(rownames(mat_t) != ""),]
+
+# Seurat version 5 or greater uses "min.features" instead of "min.genes"
+hthy <- CreateSeuratObject(mat_t, min.features = 100, min.cells = 2, 
+                           meta.data = cell_meta)
+
+# remove mat and mat_t
+rm(mat, mat_t, cell_meta, genes)
+
+# When we create our Seurat object the plate well numbers (column names in the 
+# expression matrix) from the experiment will automatically be assigned to the 
+# cell identity slot. In other words, the program assumes this is how we want to 
+# initially classify our cells. In general, we would like to avoid this behavior 
+# so there isn't a bias towards a particular cell class when removing outliers.
+
+# Setting our initial cell class to a single type, this will change after 
+# clustering. 
+hthy@meta.data$orig.ident <- factor(rep("hthy", nrow(hthy@meta.data)))
+Idents(hthy) <- hthy@meta.data$orig.ident
+
+# copied below 2 lines from parse tutorial, doesn't work (can't find functions)
+# SaveObject(hthy, "seurat_obj_before_QC")
+# hthy <- ReadObject("seurat_obj_before_QC")
+# use saveRDS instead of SaveObject
+saveRDS(hthy, file = "data/rds_objects/240205_parse_datset_before_QC.rds")
+hthy <- readRDS(file = "data/rds_objects/240205_parse_datset_before_QC.rds")
+
+
+# Cell QC: add mitochondrial percentage to metadata
+
+hthy[["percent.mt"]] <- PercentageFeatureSet(hthy, pattern = "^MT-")
+
+
+# # Cell QC: plots
+# plot <- VlnPlot(hthy, pt.size = 0,
+#                 features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+#                 ncol = 3, group.by = "sample")
+# plot
+# # SaveFigure(plot, "vln_QC", width = 12, height = 6)
+# 
+# # plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt")
+# # plot2 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+# # SaveFigure((plot1 + plot2),"scatter_QC", width = 12, height = 6, res = 200)
+# 
+# # feature scatter
+# plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt",
+#                         group.by = "sample")
+# plot2 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",
+#                         group.by = "sample")
+# 
+# plot1 + plot2
+# # Visualize QC metrics as histograms, find best cut off point
+# 
+# # nFeature_RNA
+# hist(hthy@meta.data$nFeature_RNA[hthy@meta.data$sample=="Ht9"], 
+#      breaks=500, xlim=c(0,5000),
+#      xlab = "nFeature_RNA", ylab = "Frequency", main = "HT9")
+# hist(hthy@meta.data$nFeature_RNA[hthy@meta.data$sample=="HT11"], 
+#      breaks=500, xlim=c(0,5000),
+#      xlab = "nFeature_RNA", ylab = "Frequency", main = "HT11")
+# hist(hthy@meta.data$nFeature_RNA[hthy@meta.data$sample=="Ht12"], 
+#      breaks=500, xlim=c(0,5000),
+#      xlab = "nFeature_RNA", ylab = "Frequency", main = "HT12")
+# hist(hthy@meta.data$nFeature_RNA[hthy@meta.data$sample=="Ht14"], 
+#      breaks=300, xlim=c(0,5000),
+#      xlab = "nFeature_RNA", ylab = "Frequency", main = "HT14")
+# 
+# # nCount_RNA
+# hist(hthy@meta.data$nCount_RNA[hthy@meta.data$sample=="Ht9"], 
+#      breaks=500, xlim=c(0,20000),
+#      xlab = "nCount_RNA", ylab = "Frequency", main = "HT9")
+# hist(hthy@meta.data$nCount_RNA[hthy@meta.data$sample=="HT11"], 
+#      breaks=500, xlim=c(0,20000),
+#      xlab = "nCount_RNA", ylab = "Frequency", main = "HT11")
+# hist(hthy@meta.data$nCount_RNA[hthy@meta.data$sample=="Ht12"], 
+#      breaks=500, xlim=c(0,20000),
+#      xlab = "nCount_RNA", ylab = "Frequency", main = "HT12")
+# hist(hthy@meta.data$nCount_RNA[hthy@meta.data$sample=="Ht14"], 
+#      breaks=500, xlim=c(0,20000),
+#      xlab = "nCount_RNA", ylab = "Frequency", main = "HT14")
+# 
+# # percent.mt
+# hist(hthy@meta.data$percent.mt[hthy@meta.data$sample=="Ht9"], 
+#      breaks=200, xlim=c(0,60),
+#      xlab = "percent.mt", ylab = "Frequency", main = "HT9")
+# hist(hthy@meta.data$percent.mt[hthy@meta.data$sample=="HT11"], 
+#      breaks=200, xlim=c(0,60),
+#      xlab = "percent.mt", ylab = "Frequency", main = "HT11")
+# hist(hthy@meta.data$percent.mt[hthy@meta.data$sample=="Ht12"], 
+#      breaks=200, xlim=c(0,60),
+#      xlab = "percent.mt", ylab = "Frequency", main = "HT12")
+# hist(hthy@meta.data$percent.mt[hthy@meta.data$sample=="Ht14"], 
+#      breaks=200, xlim=c(0,60),
+#      xlab = "percent.mt", ylab = "Frequency", main = "HT14")
+# 
+# # Compare QC metrics across samples using boxplot
+# boxplot(hthy@meta.data$nCount_RNA ~ hthy@meta.data$sample, 
+#         xlab = "sample #", ylab = "nCount_RNA")
+# boxplot(hthy@meta.data$nFeature_RNA ~ hthy@meta.data$sample, 
+#         xlab = "sample #", ylab = "nFeature_RNA")
+# boxplot(hthy@meta.data$percent.mt ~ hthy@meta.data$sample, 
+#         xlab = "sample #", ylab = "percent.mt")
+# 
+# #violin plot in linear scale
+# VlnPlot(hthy, pt.size = 0, group.by = "sample",
+#         features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+#         ncol = 3)
+# #violin plot in log scale
+# VlnPlot(hthy, pt.size = 0, group.by = "sample", log = TRUE,
+#         features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+#         ncol = 3)
+# 
+# 
+# # check dimension of the original hthy object
+# dim(hthy)
+# dim(hthy@assays)
+# dim(hthy@meta.data)
+
+
+# subset and calculate mean and 3*SD for percent.mt (ignore lower bound since
+# they tend to be less than 0) and nFeature_RNA, then downsample
+
+ht9 <- subset(x = hthy, subset = sample == "Ht9")
+mean.percent.mt <- mean(ht9@meta.data$percent.mt)
+sd.percent.mt <- sd(ht9@meta.data$percent.mt)
+upper.mt <- mean.percent.mt + 3 * sd.percent.mt
+upper.feature <- mean(ht9@meta.data$nFeature_RNA) + 3*sd(ht9@meta.data$nFeature_RNA)
+ht9_sub <- subset(ht9, subset = percent.mt <= upper.mt)
+ht9_sub <- subset(ht9_sub, subset = nFeature_RNA >= 500 & nFeature_RNA <= upper.feature)
+
+
+ht11 <- subset(x = hthy, subset = sample == "HT11")
+mean.percent.mt <- mean(ht11@meta.data$percent.mt)
+sd.percent.mt <- sd(ht11@meta.data$percent.mt)
+upper.mt <- mean.percent.mt + 3 * sd.percent.mt
+upper.feature <- mean(ht11@meta.data$nFeature_RNA) + 3*sd(ht11@meta.data$nFeature_RNA)
+ht11_sub <- subset(ht11, subset = percent.mt <= upper.mt)
+ht11_sub <- subset(ht11_sub, subset = nFeature_RNA >= 500 & nFeature_RNA <= upper.feature)
+
+
+ht12 <- subset(x = hthy, subset = sample == "Ht12")
+mean.percent.mt <- mean(ht12@meta.data$percent.mt)
+sd.percent.mt <- sd(ht12@meta.data$percent.mt)
+upper.mt <- mean.percent.mt + 3 * sd.percent.mt
+upper.feature <- mean(ht12@meta.data$nFeature_RNA) + 3*sd(ht12@meta.data$nFeature_RNA)
+ht12_sub <- subset(ht12, subset = percent.mt <= upper.mt)
+ht12_sub <- subset(ht12_sub, subset = nFeature_RNA >= 500 & nFeature_RNA <= upper.feature)
+
+
+ht14 <- subset(x = hthy, subset = sample == "Ht14")
+mean.percent.mt <- mean(ht14@meta.data$percent.mt)
+sd.percent.mt <- sd(ht14@meta.data$percent.mt)
+upper.mt <- mean.percent.mt + 3 * sd.percent.mt
+upper.feature <- mean(ht14@meta.data$nFeature_RNA) + 3*sd(ht14@meta.data$nFeature_RNA)
+ht14_sub <- subset(ht14, subset = percent.mt <= upper.mt)
+ht14_sub <- subset(ht14_sub, subset = nFeature_RNA >= 500 & nFeature_RNA <= upper.feature)
+
+# # check original dimensions of the subsetted objects
+# dim(ht9)
+# dim(ht11)
+# dim(ht12)
+# dim(ht14)
+# dim(ht9_sub)
+# dim(ht11_sub)
+# dim(ht12_sub)
+# dim(ht14_sub)
+# based on the dimensions above, determined that ht12 has 8032 cells, the lowest
+
+# 240122 no downsampling for our analysis needs, goal is to aggregate all cells
+# downsample to 8032 cells for each sample
+# ht9_sub <- subset(ht9_sub, downsample = 8032)
+# ht11_sub <- subset(ht11_sub, downsample = 8032)
+# ht12_sub <- subset(ht12_sub, downsample = 8032)
+# ht14_sub <- subset(ht14_sub, downsample = 8032)
+
+# remove original objects
+rm(ht9, ht11, ht12, ht14)
+
+
+# load in sarah's reference data
+# read in rds object with labels
+reference <- readRDS(file = "data/rds_objects/meyer_snrna_seq_multiome_full_data_with_celltypes.rds")
+
+# get the batch (i.e. sample) names from sarah's reference data set
+batches <- unique(reference@meta.data$batch)
+
+ref1 <- subset(x = reference, subset = batch == batches[1])
+ref2 <- subset(x = reference, subset = batch == batches[2])
+ref3 <- subset(x = reference, subset = batch == batches[3])
+
+# merge all 7 samples from parse and multiome dataset
+hthy2 <- merge(x = ht9_sub, y = list(ht11_sub, 
+                                     ht12_sub, ht14_sub, ref1, ref2, ref3))
+
+# merge only ht11 multiome and parse samples
+ht11 <- merge(x = ht11_sub, y = ref2)
+
+# standard analysis steps
+hthy2 <- NormalizeData(hthy2)
+hthy2 <- FindVariableFeatures(hthy2)
+hthy2 <- ScaleData(hthy2)
+hthy2 <- RunPCA(hthy2, features = VariableFeatures(object = hthy2))
+
+hthy2 <- FindNeighbors(hthy2, dims = 1:30)
+hthy2 <- FindClusters(hthy2, resolution = 0.5, 
+                      cluster.name = "unintegrated_clusters")
+hthy2 <- RunUMAP(hthy2, dims = 1:30, 
+                 reduction.name = "umap.unintegrated")
+
+# plot umap before integration
+# group by parse samples ("sample")
+DimPlot(hthy2, reduction = "umap.unintegrated", group.by = "sample")
+# group by multiome samples ("batch")
+DimPlot(hthy2, reduction = "umap.unintegrated", group.by = "batch")
+
+
+# perform integration on the 7 merged samples
+hthy2wi <- IntegrateLayers(object = hthy2, method = CCAIntegration, 
+                           orig.reduction = "pca", 
+                           new.reduction = "integrated.cca",
+                           verbose = FALSE) # 240205 took 2h 38m 47s
+
+# save object after integrating and joining layers
+saveRDS(hthy2wi, file = "data/rds_objects/240205_all_7samples_integrated.rds")
+hthy2wi <- readRDS(file = "data/rds_objects/240205_all_7samples_integrated.rds")
+
+
+# rejoin the layers after integration
+hthy2wi[["RNA"]] <- JoinLayers(hthy2wi[["RNA"]])
+
+
+# remove objects
+rm(ht9_sub, ht11_sub, ht12_sub, ht14_sub)
+rm(hthy, hthy2, ref1, ref2, ref3, reference)
+
+
+# analyze post integration
+hthy2wi <- FindNeighbors(hthy2wi, reduction = "integrated.cca", dims = 1:30)
+hthy2wi <- FindClusters(hthy2wi, resolution = 0.5)
+hthy2wi <- RunUMAP(hthy2wi, dims = 1:30, reduction = "integrated.cca")
+
+# combine sample IDs
+hthy2wi@meta.data <- hthy2wi@meta.data |>
+  mutate(samples = ifelse(is.na(sample), batch, sample))
+
+#plot graphs before combining sample IDs
+DimPlot(hthy2wi, reduction = "umap", group.by = "sample")
+DimPlot(hthy2wi, reduction = "umap", group.by = "batch")
+DimPlot(hthy2wi, reduction = "umap", group.by = "samples")
+DimPlot(hthy2wi, reduction = "umap", split.by = "sample")
+DimPlot(hthy2wi, reduction = "umap", split.by = "batch")
+DimPlot(hthy2wi, reduction = "umap", split.by = "samples")
+
+FeaturePlot(hthy2wi, reduction = "umap", features = "AIRE", split.by = "samples")
+FeaturePlot(hthy2wi, reduction = "umap", features = "PRSS16", split.by = "samples")
+FeaturePlot(hthy2wi, reduction = "umap", features = "PSMB11", split.by = "samples")
+FeaturePlot(hthy2wi, reduction = "umap", features = "LY75", split.by = "samples")
+
+
+# repeat analysis for merged ht11
+ht11 <- NormalizeData(ht11)
+ht11 <- FindVariableFeatures(ht11)
+ht11 <- ScaleData(ht11)
+ht11 <- RunPCA(ht11, features = VariableFeatures(object = ht11))
+
+ht11 <- FindNeighbors(ht11, dims = 1:30)
+ht11 <- FindClusters(ht11, resolution = 0.5, 
+                      cluster.name = "unintegrated_clusters")
+ht11 <- RunUMAP(ht11, dims = 1:30, 
+                 reduction.name = "umap.unintegrated")
+
+# plot umap before integration
+# group by parse samples ("sample")
+DimPlot(ht11, reduction = "umap.unintegrated", group.by = "sample")
+# group by multiome samples ("batch")
+DimPlot(ht11, reduction = "umap.unintegrated", group.by = "batch")
+# group by orig.ident
+DimPlot(ht11, reduction = "umap.unintegrated", group.by = "orig.ident")
+
+
+# ht11 with integration
+ht11wi <- IntegrateLayers(object = ht11, method = CCAIntegration, 
+                           orig.reduction = "pca", 
+                           new.reduction = "integrated.cca",
+                           verbose = FALSE) # 240205 took 8m 18s
+
+# save object after integrating and joining layers
+saveRDS(ht11wi, file = "data/rds_objects/240205_ht11_integrated.rds")
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated.rds")
+
+# rejoin the layers after integration
+ht11wi[["RNA"]] <- JoinLayers(ht11wi[["RNA"]])
+
+# analyze post integration
+ht11wi <- FindNeighbors(ht11wi, reduction = "integrated.cca", dims = 1:30)
+ht11wi <- FindClusters(ht11wi, resolution = 0.5)
+ht11wi <- RunUMAP(ht11wi, dims = 1:30, reduction = "integrated.cca")
+
+# combine sample IDs
+ht11wi@meta.data <- ht11wi@meta.data |>
+  mutate(samples = ifelse(is.na(sample), batch, sample))
+
+#plot graphs before combining sample IDs
+DimPlot(ht11wi, reduction = "umap", group.by = "sample")
+DimPlot(ht11wi, reduction = "umap", group.by = "batch")
+DimPlot(ht11wi, reduction = "umap", group.by = "samples")
+DimPlot(ht11wi, reduction = "umap", split.by = "samples")
+
+FeaturePlot(ht11wi, reduction = "umap", features = "AIRE", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PRSS16", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PSMB11", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "LY75", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "MKI67", split.by = "samples")
+
+
+# save seurat object before trying label transfer
+saveRDS(hthy2wi, file = "data/rds_objects/240205_all_7samples_integrated-pre_label_transfer.rds")
+hthy2wi <- readRDS(file = "data/rds_objects/240205_all_7samples_integrated-pre_label_transfer.rds")
+saveRDS(ht11wi, file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+
+
+
+# label transfer for all 7 samples
+
+tec.ref <- subset(hthy2wi, orig.ident == "SeuratProject")
+tec.query <- subset(hthy2wi, orig.ident == "hthy")
+
+tec.anchors <- FindTransferAnchors(reference = tec.ref, 
+                                   query = tec.query,
+                                   dims = 1:30, 
+                                   reference.reduction = "pca")
+predictions <- TransferData(anchorset = tec.anchors, 
+                            refdata = tec.ref$celltype, 
+                            dims = 1:30)
+tec.query <- AddMetaData(tec.query, metadata = predictions)
+
+# Visualization
+DimPlot(tec.query, reduction = "umap")
+DimPlot(tec.query, reduction = "umap", group.by = "samples")
+DimPlot(tec.ref, reduction = "umap", group.by = "samples")
+DimPlot(tec.query, reduction = "umap", split.by = "samples")
+DimPlot(tec.ref, reduction = "umap", split.by = "samples")
+
+# Unimodal UMAP Projection
+tec.ref <- RunUMAP(tec.ref, dims = 1:30, 
+                   reduction = "integrated.cca", 
+                   return.model = TRUE)
+tec.query <- MapQuery(anchorset = tec.anchors, 
+                      reference = tec.ref, 
+                      query = tec.query,
+                      refdata = list(celltype = "celltype"), 
+                      reference.reduction = "pca", reduction.model = "umap")
+
+# plot predicted cell types
+DimPlot(tec.query[,tec.query@meta.data$samples == "Ht9"], reduction = "umap", 
+        group.by = "predicted.celltype", label = TRUE) + 
+  NoLegend() +
+  ggtitle("HT9")
+DimPlot(tec.query[,tec.query@meta.data$samples == "HT11"], reduction = "umap", 
+        group.by = "predicted.celltype", label = TRUE) +
+  ggtitle("HT11") +
+  NoLegend()
+DimPlot(tec.query[,tec.query@meta.data$samples == "Ht12"], reduction = "umap", 
+        group.by = "predicted.celltype", label = TRUE) +
+  ggtitle("HT12") +
+  NoLegend()
+DimPlot(tec.query[,tec.query@meta.data$samples == "Ht14"], reduction = "umap", 
+        group.by = "predicted.celltype", label = TRUE) +
+  ggtitle("HT14") +
+  NoLegend()
+DimPlot(tec.ref, reduction = "umap", group.by = "celltype", label = TRUE) +
+  ggtitle("Multiome Reference") +
+  NoLegend()
+
+# plot UMAP projection
+p1 <- DimPlot(tec.ref, reduction = "umap", group.by = "celltype", 
+              label = TRUE, label.size = 3,repel = TRUE,
+              split.by = "samples") + 
+  NoLegend() + 
+  ggtitle("Reference annotations")
+p2 <- DimPlot(tec.query, reduction = "ref.umap", 
+              group.by = "predicted.celltype", 
+              label = TRUE,
+              label.size = 3, 
+              repel = TRUE,
+              split.by = "samples") + 
+  NoLegend() + 
+  ggtitle("Query transferred labels")
+p1 + p2
+
+p3 <- DimPlot(tec.ref, reduction = "umap", group.by = "celltype", 
+              label = TRUE, label.size = 3,repel = TRUE) + 
+  NoLegend() + 
+  ggtitle("Reference annotations")
+p4 <- DimPlot(tec.query, reduction = "ref.umap", 
+              group.by = "predicted.celltype", 
+              label = TRUE,
+              label.size = 3, 
+              repel = TRUE) + 
+  NoLegend() + 
+  ggtitle("Query transferred labels")
+p3 + p4
+
+
+tec.query.cellcounts <- table(tec.query$predicted.celltype, by=tec.query@meta.data$samples)
+tec.ref.cellcounts <- table(tec.ref$celltype, by=tec.ref@meta.data$samples)
+
+write.csv(tec.query.cellcounts, file = "240205_tec_query_tab.csv")
+write.csv(tec.ref.cellcounts, file = "240205_tec_ref_tab.csv")
+
+
+
+
+# label transfer for only ht11 sample
+
+ht11.ref <- subset(ht11wi, orig.ident == "SeuratProject")
+ht11.query <- subset(ht11wi, orig.ident == "hthy")
+
+ht11.anchors <- FindTransferAnchors(reference = ht11.ref, 
+                                   query = ht11.query,
+                                   dims = 1:30, 
+                                   reference.reduction = "pca")
+predictions <- TransferData(anchorset = ht11.anchors, 
+                            refdata = ht11.ref$celltype, 
+                            dims = 1:30)
+ht11.query <- AddMetaData(ht11.query, metadata = predictions)
+
+# Visualization
+DimPlot(ht11.query, reduction = "umap")
+DimPlot(ht11.query, reduction = "umap", group.by = "samples")
+DimPlot(ht11.ref, reduction = "umap", group.by = "samples")
+DimPlot(ht11.query, reduction = "umap", split.by = "samples")
+DimPlot(ht11.ref, reduction = "umap", split.by = "samples")
+
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                   reduction = "integrated.cca", 
+                   return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                      reference = ht11.ref, 
+                      query = ht11.query,
+                      refdata = list(celltype = "celltype"), 
+                      reference.reduction = "pca", reduction.model = "umap")
+
+# plot predicted cell types
+DimPlot(ht11.query, reduction = "umap", 
+        group.by = "predicted.celltype", split.by = "samples", label = TRUE) + 
+  NoLegend()
+DimPlot(ht11.query, reduction = "umap", 
+        group.by = "predicted.celltype", label = TRUE) +
+  ggtitle("HT11")
+
+DimPlot(ht11.ref, reduction = "umap", group.by = "celltype", label = TRUE)
+
+# plot UMAP projection
+ht11.p1 <- DimPlot(ht11.ref, reduction = "umap", group.by = "celltype", 
+              label = TRUE, label.size = 3,repel = TRUE,
+              split.by = "samples") + 
+  NoLegend() + 
+  ggtitle("Reference annotations")
+ht11.p2 <- DimPlot(ht11.query, reduction = "ref.umap", 
+              group.by = "predicted.celltype", 
+              label = TRUE,
+              label.size = 3, 
+              repel = TRUE,
+              split.by = "samples") + 
+  NoLegend() + 
+  ggtitle("Query transferred labels")
+ht11.p1 + ht11.p2
+
+ht11.p3 <- DimPlot(ht11.ref, reduction = "umap", group.by = "celltype", 
+              label = TRUE, label.size = 3,repel = TRUE) + 
+  NoLegend() + 
+  ggtitle("Reference annotations")
+ht11.p4 <- DimPlot(ht11.query, reduction = "ref.umap", 
+              group.by = "predicted.celltype", 
+              label = TRUE,
+              label.size = 3, 
+              repel = TRUE) + 
+  NoLegend() + 
+  ggtitle("Query transferred labels")
+ht11.p3 + ht11.p4
+
+
+ht11.query.cellcounts <- table(ht11.query$predicted.celltype, by=ht11.query@meta.data$samples)
+ht11.ref.cellcounts <- table(ht11.ref$celltype, by=ht11.ref@meta.data$samples)
+
+write.csv(ht11.query.cellcounts, file = "240205_ht11_query_tab.csv")
+write.csv(ht11.ref.cellcounts, file = "240205_ht11_ref_tab.csv")
+
+
+
+
+
+
+
+# END OF SCRIPT 240205
+
+
+# ======================================================================
+
+
+# START SCRIPT 240207 correlate gene expression between parse and multiome
+# 1 split dataset by parse or multiome
+# 2 do label transfer
+# 3 reintegrate
+# 4 compare expression between cell types, plot heatmap and distribution
+
+
+
+
+# load data
+hthy2wi <- readRDS(file = "data/rds_objects/240205_all_7samples_integrated-pre_label_transfer.rds")
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+
+ht11.ref <- subset(ht11wi, orig.ident == "SeuratProject")
+ht11.query <- subset(ht11wi, orig.ident == "hthy")
+
+ht11.anchors <- FindTransferAnchors(reference = ht11.ref, 
+                                    query = ht11.query,
+                                    dims = 1:30, 
+                                    reference.reduction = "pca")
+predictions <- TransferData(anchorset = ht11.anchors, 
+                            refdata = ht11.ref$celltype, 
+                            dims = 1:30)
+ht11.query <- AddMetaData(ht11.query, metadata = predictions)
+
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                    reduction = "integrated.cca", 
+                    return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                       reference = ht11.ref, 
+                       query = ht11.query,
+                       refdata = list(celltype = "celltype"), 
+                       reference.reduction = "pca", reduction.model = "umap")
+
+
+test11.query <- ht11.query
+test11.ref <- ht11.ref
+Idents(test11.query) <- "predicted.celltype"
+Idents(test11.ref) <- "celltype"
+
+ht11wi.remerged <- merge(x = test11.query, y = test11.ref)
+ht11wi.remerged <- NormalizeData(ht11wi.remerged)
+ht11wi.remerged <- FindVariableFeatures(ht11wi.remerged)
+ht11wi.remerged <- ScaleData(ht11wi.remerged)
+ht11wi.remerged <- RunPCA(ht11wi.remerged, features = VariableFeatures(object = ht11wi.remerged))
+
+# steps below not done, will overwrite the predicted cell types column
+#   ht11wi.remerged2 <- FindNeighbors(ht11wi.remerged2, dims = 1:30)
+#   ht11wi.remerged3 <- FindClusters(ht11wi.remerged2, resolution = 0.5, 
+#                     cluster.name = "unintegrated_clusters")
+#   ht11wi.remerged4 <- RunUMAP(ht11wi.remerged3, dims = 1:30, 
+#                reduction.name = "umap.unintegrated")
+
+ht11wi.remerged <- IntegrateLayers(object = ht11wi.remerged, 
+                                   method = CCAIntegration, 
+                                   orig.reduction = "pca", 
+                                   new.reduction = "integrated.cca",
+                                   verbose = FALSE)
+# 240207 layer integration took 6m 28s
+# 240709 layer integration took 8m 22s
+
+# re-join layers after integration
+ht11wi.remerged[["RNA"]] <- JoinLayers(ht11wi.remerged[["RNA"]])
+
+# did not do findneighbor, findcluster, runUMAP b/c will lose predicted cell labeling
+
+mtec.2 <- FindConservedMarkers(ht11wi.remerged, ident.1 = "mTEC II", 
+                               grouping.var = "orig.ident", verbose = FALSE)
+head(mtec.2)
+
+# combine celltype and predicted.celltype columns into a new column called celltypes
+ht11wi.remerged@meta.data <- ht11wi.remerged@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+
+
+library(ggplot2)
+library(cowplot)
+theme_set(theme_cowplot())
+
+aggregate_ht11wi <- AggregateExpression(ht11wi.remerged, group.by = c("orig.ident", "celltypes"), return.seurat = TRUE)
+genes.to.label = c("ISG15", "LY6E", "IFI6", "ISG20", "MX1", "IFIT2", "IFIT1", "CXCL10", "CCL8")
+
+aggregate_ht11wi0709_2 <- AggregateExpression(ht11wi.remerged, group.by = c("orig.ident"), return.seurat = TRUE)
+
+# list of the cell type annotations
+# [1] "mcTEC"              "cTEC-late"          "mTEC I"             "cTEC-early"        
+# [5] "heteroTEC"          "mTEC II"            "neuroendocrine I"   "sTEC I"            
+# [9] "transit-amplifying" "muscle"             "neuroendocrine II"  "ionocyte II"       
+# [13] "neuro"              "ionocyte I"         "tuft"               "sTEC II" 
+
+p1 <- CellScatter(aggregate_ht11wi, "hthy_mcTEC", "SeuratProject_mcTEC")
+p2 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-late", "SeuratProject_cTEC-late")
+p3 <- CellScatter(aggregate_ht11wi, "hthy_mTEC I", "SeuratProject_mTEC I")
+p4 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-early", "SeuratProject_cTEC-early")
+p5 <- CellScatter(aggregate_ht11wi, "hthy_heteroTEC", "SeuratProject_heteroTEC")
+p6 <- CellScatter(aggregate_ht11wi, "hthy_mTEC II", "SeuratProject_mTEC II")
+p7 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine I", "SeuratProject_neuroendocrine I")
+p8 <- CellScatter(aggregate_ht11wi, "hthy_transit-amplifying", "SeuratProject_transit-amplifying")
+p9 <- CellScatter(aggregate_ht11wi, "hthy_muscle", "SeuratProject_muscle")
+p10 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine II", "SeuratProject_neuroendocrine II")
+p11 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte II", "SeuratProject_ionocyte II")
+p12 <- CellScatter(aggregate_ht11wi, "hthy_neuro", "SeuratProject_neuro")
+p13 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte I", "SeuratProject_ionocyte I")
+p14 <- CellScatter(aggregate_ht11wi, "hthy_tuft", "SeuratProject_tuft")
+p15 <- CellScatter(aggregate_ht11wi, "hthy_sTEC II", "SeuratProject_sTEC II")
+p16 <- CellScatter(aggregate_ht11wi, "hthy_sTEC I", "SeuratProject_sTEC I")
+
+# p14-16 cannot be generated: error: too few variables passed
+plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
+
+p19 <- CellScatter(aggregate_ht11wi0709_2, "hthy", "SeuratProject")
+plot_grid(p19)
+
+# 240207 END OF SCRIPT
+
+
+# =================================
+
+
+# START SCRIPT 240212 correlate gene expression between parse and multiome
+# test alternative analysis sequence
+# copy idents to new column celltypes before merging > integrate >...>runUMAP
+# 
+
+
+# load data
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+
+ht11.ref <- subset(ht11wi, orig.ident == "SeuratProject")
+ht11.query <- subset(ht11wi, orig.ident == "hthy")
+
+ht11.anchors <- FindTransferAnchors(reference = ht11.ref, 
+                                    query = ht11.query,
+                                    dims = 1:30, 
+                                    reference.reduction = "pca")
+predictions <- TransferData(anchorset = ht11.anchors, 
+                            refdata = ht11.ref$celltype, 
+                            dims = 1:30)
+ht11.query <- AddMetaData(ht11.query, metadata = predictions)
+
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                    reduction = "integrated.cca", 
+                    return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                       reference = ht11.ref, 
+                       query = ht11.query,
+                       refdata = list(celltype = "celltype"), 
+                       reference.reduction = "pca", reduction.model = "umap")
+
+test11.query <- ht11.query
+test11.ref <- ht11.ref
+
+# combine celltype and predicted.celltype columns into a new column called celltypes
+test11.query@meta.data <- test11.query@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+test11.ref@meta.data <- test11.ref@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+
+# Idents(test11.query) <- "predicted.celltype"
+# Idents(test11.ref) <- "celltype"
+
+ht11wi.remerged <- merge(x = test11.query, y = test11.ref)
+ht11wi.remerged <- NormalizeData(ht11wi.remerged)
+ht11wi.remerged <- FindVariableFeatures(ht11wi.remerged)
+ht11wi.remerged <- ScaleData(ht11wi.remerged)
+ht11wi.remerged <- RunPCA(ht11wi.remerged, 
+                          features = VariableFeatures(object = ht11wi.remerged))
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5, 
+                     cluster.name = "unintegrated_clusters")
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                    reduction.name = "umap.unintegrated")
+
+ht11wi.remerged <- IntegrateLayers(object = ht11wi.remerged, 
+                                   method = CCAIntegration, 
+                                   orig.reduction = "pca", 
+                                   new.reduction = "integrated.cca",
+                                   verbose = FALSE)
+# 240207 layer integration took 6m 28s
+# 240709 layer integration took 6m 19s
+
+# re-join layers after integration
+ht11wi.remerged[["RNA"]] <- JoinLayers(ht11wi.remerged[["RNA"]])
+
+
+# analyze post integration
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, reduction = "integrated.cca",
+                                 dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5)
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                           reduction = "integrated.cca")
+
+#plot graphs before combining sample IDs
+DimPlot(ht11wi, reduction = "umap", group.by = "sample")
+DimPlot(ht11wi, reduction = "umap", group.by = "batch")
+DimPlot(ht11wi, reduction = "umap", group.by = "samples")
+DimPlot(ht11wi, reduction = "umap", split.by = "samples")
+
+FeaturePlot(ht11wi, reduction = "umap", features = "AIRE", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PRSS16", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PSMB11", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "LY75", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "MKI67", split.by = "samples")
+
+
+#mtec.2 <- FindConservedMarkers(ht11wi.remerged, ident.1 = "mTEC II", 
+#                               grouping.var = "orig.ident", verbose = FALSE)
+#head(mtec.2)
+
+library(ggplot2)
+library(cowplot)
+theme_set(theme_cowplot())
+
+aggregate_ht11wi <- AggregateExpression(ht11wi.remerged, 
+                                        group.by = c("orig.ident", "celltypes"),
+                                        return.seurat = TRUE)
+# genes.to.label = c("ISG15", "LY6E", "IFI6", "ISG20", "MX1", "IFIT2", "IFIT1", 
+#                    "CXCL10", "CCL8")
+aggregate_ht11wi0709 <- AggregateExpression(ht11wi, group.by = c("orig.ident"),
+                                            return.seurat = TRUE)
+
+# list of the cell type annotations
+# [1] "mcTEC"              "cTEC-late"          "mTEC I"             "cTEC-early"        
+# [5] "heteroTEC"          "mTEC II"            "neuroendocrine I"   "sTEC I"            
+# [9] "transit-amplifying" "muscle"             "neuroendocrine II"  "ionocyte II"       
+# [13] "neuro"              "ionocyte I"         "tuft"               "sTEC II" 
+
+p1 <- CellScatter(aggregate_ht11wi, "hthy_mcTEC", "SeuratProject_mcTEC")
+p2 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-late", "SeuratProject_cTEC-late")
+p3 <- CellScatter(aggregate_ht11wi, "hthy_mTEC I", "SeuratProject_mTEC I")
+p4 <- CellScatter(aggregate_ht11wi, "hthy_cTEC-early", "SeuratProject_cTEC-early")
+p5 <- CellScatter(aggregate_ht11wi, "hthy_heteroTEC", "SeuratProject_heteroTEC")
+p6 <- CellScatter(aggregate_ht11wi, "hthy_mTEC II", "SeuratProject_mTEC II")
+p7 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine I", "SeuratProject_neuroendocrine I")
+p8 <- CellScatter(aggregate_ht11wi, "hthy_transit-amplifying", "SeuratProject_transit-amplifying")
+p9 <- CellScatter(aggregate_ht11wi, "hthy_muscle", "SeuratProject_muscle")
+p10 <- CellScatter(aggregate_ht11wi, "hthy_neuroendocrine II", "SeuratProject_neuroendocrine II")
+p11 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte II", "SeuratProject_ionocyte II")
+p12 <- CellScatter(aggregate_ht11wi, "hthy_neuro", "SeuratProject_neuro")
+p13 <- CellScatter(aggregate_ht11wi, "hthy_ionocyte I", "SeuratProject_ionocyte I")
+p14 <- CellScatter(aggregate_ht11wi, "hthy_tuft", "SeuratProject_tuft")
+p15 <- CellScatter(aggregate_ht11wi, "hthy_sTEC II", "SeuratProject_sTEC II")
+p16 <- CellScatter(aggregate_ht11wi, "hthy_sTEC I", "SeuratProject_sTEC I")
+
+p17 <- CellScatter(aggregate_ht11wi0709, "hthy", "SeuratProject")
+plot(p17)
+plot(p1)
+# p14-16 cannot be generated: error: too few variables passed
+plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
+
+
+# extract features list from parse as a character vector
+parse_features <- as.data.frame(ht11_sub@assays$RNA@features@dimnames[1])[,1]
+# extract features list from multiome as a character vector
+multiome_features <- as.data.frame(ref2@assays$RNA@counts@Dimnames[1])[,1]
+# might be better way: temp2 <- as.data.frame(reference@assays$RNA@counts@Dimnames[1])
+
+# extract features common in parse and multiome dataset
+common_features <- intersect(parse_features, multiome_features)
+# extract features unique to parse dataset
+parse_unique <- parse_features[!(parse_features %in% multiome_features)]
+multiome_unique <- multiome_features[!(multiome_features %in% parse_features)]
+# check to see if the unique sets are truly unique
+sum(parse_unique %in% multiome_unique)
+# MYH16 is found only in parse dataset
+"MYH16" %in% parse_features
+"MYH16" %in% multiome_features
+# AL645608.1 is found only in multiome dataset
+"AL645608.1" %in% parse_features
+"AL645608.1" %in% multiome_features
+# export the list of unique genes from parse and multiome
+write.csv(parse_unique, file = "parse_unique_features.csv")
+write.csv(multiome_unique, file = "multiome_unique_features.csv")
+
+# ========
+
+
+ht11.common <- subset(ht11wi.remerged, features = common_features)
+
+aggregate_ht11wi_common <- AggregateExpression(ht11.common, group.by = c("orig.ident", "celltypes"), return.seurat = TRUE)
+# genes.to.label = c("ISG15", "LY6E", "IFI6", "ISG20", "MX1", "IFIT2", "IFIT1", 
+#                    "CXCL10", "CCL8")
+
+# list of the cell type annotations
+# [1] "mcTEC"              "cTEC-late"          "mTEC I"             "cTEC-early"        
+# [5] "heteroTEC"          "mTEC II"            "neuroendocrine I"   "sTEC I"            
+# [9] "transit-amplifying" "muscle"             "neuroendocrine II"  "ionocyte II"       
+# [13] "neuro"              "ionocyte I"         "tuft"               "sTEC II" 
+
+p1 <- CellScatter(aggregate_ht11wi_common, "hthy_mcTEC", "SeuratProject_mcTEC")
+p2 <- CellScatter(aggregate_ht11wi_common, "hthy_cTEC-late", "SeuratProject_cTEC-late")
+p3 <- CellScatter(aggregate_ht11wi_common, "hthy_mTEC I", "SeuratProject_mTEC I")
+p4 <- CellScatter(aggregate_ht11wi_common, "hthy_cTEC-early", "SeuratProject_cTEC-early")
+p5 <- CellScatter(aggregate_ht11wi_common, "hthy_heteroTEC", "SeuratProject_heteroTEC")
+p6 <- CellScatter(aggregate_ht11wi_common, "hthy_mTEC II", "SeuratProject_mTEC II")
+p7 <- CellScatter(aggregate_ht11wi_common, "hthy_neuroendocrine I", "SeuratProject_neuroendocrine I")
+p8 <- CellScatter(aggregate_ht11wi_common, "hthy_transit-amplifying", "SeuratProject_transit-amplifying")
+p9 <- CellScatter(aggregate_ht11wi_common, "hthy_muscle", "SeuratProject_muscle")
+p10 <- CellScatter(aggregate_ht11wi_common, "hthy_neuroendocrine II", "SeuratProject_neuroendocrine II")
+p11 <- CellScatter(aggregate_ht11wi_common, "hthy_ionocyte II", "SeuratProject_ionocyte II")
+p12 <- CellScatter(aggregate_ht11wi_common, "hthy_neuro", "SeuratProject_neuro")
+p13 <- CellScatter(aggregate_ht11wi_common, "hthy_ionocyte I", "SeuratProject_ionocyte I")
+p14 <- CellScatter(aggregate_ht11wi_common, "hthy_tuft", "SeuratProject_tuft")
+p15 <- CellScatter(aggregate_ht11wi_common, "hthy_sTEC II", "SeuratProject_sTEC II")
+p16 <- CellScatter(aggregate_ht11wi_common, "hthy_sTEC I", "SeuratProject_sTEC I")
+
+# p14-16 cannot be generated: error: too few variables passed
+plot_grid(p1,p2,p3,p4,p5,p6,p7,p8,p9,p10,p11,p12,p13)
+
+
+
+
+plot1 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(hthy, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+# SaveFigure((plot1 + plot2),"scatter_QC", width = 12, height = 6, res = 200)
+
+# feature scatter
+plot1 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "percent.mt",
+                        split.by = "samples")
+plot2 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+plot3 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "subsets_Mito_percent",
+                        split.by = "samples")
+plot4 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+
+
+plot1 + plot3
+plot2 + plot4
+
+plot5 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "percent.mt",
+                        split.by = "samples")
+plot6 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+plot7 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "subsets_Mito_percent",
+                        split.by = "samples")
+plot8 <- FeatureScatter(ht11.common, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "samples")
+
+
+plot5 + plot7
+plot6 + plot8
+
+mean(ht11wi.remerged@meta.data$nFeature_RNA[ht11wi.remerged@meta.data$samples == "HT11"])
+mean(ht11wi.remerged@meta.data$nFeature_RNA[ht11wi.remerged@meta.data$samples == "20230505_YL01"])
+
+plot9 <- FeatureScatter(ht11wi.remerged, feature1 = "nCount_RNA", 
+                        feature2 = "nFeature_RNA",
+                        split.by = "celltypes",
+                        group.by = "samples")
+plot9
+
+# 240212 END OF SCRIPT
+
+# ========================================
+
+# 240216 START OF SCRIPT
+colnames(aggregate_ht11wi) <- gsub("-", "_", colnames(aggregate_ht11wi))
+
+filter_off_diagonal <- function(combined_seurat, col_multiome, col_parse,
+                                ratio_threshold) {
+  a <- GetAssayData(combined_seurat)
+  a <- a[,c(col_parse,col_multiome)] |>
+    as.data.frame()
+  a$multi_to_parse_ratio <- a[,2]/a[,1] 
+  #head(hthy_ctec_early)
+  #colnames(hthy_ctec_early) <- c("hthy_cTEC_early", "SeuratProject_cTEC_early")
+  #head(hthy_ctec_early)
+  #hthy_ctec_early <- as.data.frame(hthy_ctec_early)
+  #hthy_ctec_early2 <- hthy_ctec_early %>%
+  #  mutate(multi_to_parse_ratio = SeuratProject_cTEC_early / hthy_cTEC_early)
+  #head(hthy_ctec_early2)
+  plot(x = a[,1], 
+       y = a[,2],
+       xlim = c(0,6),
+       ylim = c(0,6))
+  a <- a |>
+    filter(multi_to_parse_ratio > ratio_threshold)
+  plot(x = a[,1], 
+       y = a[,2],
+       xlim = c(0,6),
+       ylim = c(0,6))
+  hthy_ctec_early2 <- hthy_ctec_early2 |>
+    filter(SeuratProject_cTEC_early > 1.2)
+  plot(x = a[,1], 
+       y = a[,2],
+       xlim = c(0,6),
+       ylim = c(0,6))
+}
+
+filter_off_diagonal(aggregate_ht11wi, 1, 15, 1.1) 
+
+
+a <- GetAssayData(aggregate_ht11wi)
+hthy_ctec_early <- a[,c(1,15)]
+head(hthy_ctec_early)
+colnames(hthy_ctec_early) <- c("hthy_cTEC_early", "SeuratProject_cTEC_early")
+head(hthy_ctec_early)
+hthy_ctec_early <- as.data.frame(hthy_ctec_early)
+hthy_ctec_early2 <- hthy_ctec_early %>%
+  mutate(multi_to_parse_ratio = SeuratProject_cTEC_early / hthy_cTEC_early)
+head(hthy_ctec_early2)
+plot(x = hthy_ctec_early2$hthy_cTEC_early, 
+     y = hthy_ctec_early2$SeuratProject_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_early2 <- hthy_ctec_early2 |>
+  filter(multi_to_parse_ratio > 1.1)
+plot(x = hthy_ctec_early2$hthy_cTEC_early, 
+     y = hthy_ctec_early2$SeuratProject_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_early2 <- hthy_ctec_early2 |>
+  filter(SeuratProject_cTEC_early > 1.2)
+plot(x = hthy_ctec_early2$hthy_cTEC_early, 
+     y = hthy_ctec_early2$SeuratProject_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6))
+
+# ==========
+
+head(a)
+hthy_ctec_late <- a[,c(2,16)]
+head(hthy_ctec_late)
+colnames(hthy_ctec_late) <- c("hthy_cTEC_late", "SeuratProject_cTEC_late")
+head(hthy_ctec_late)
+hthy_ctec_late <- as.data.frame(hthy_ctec_late)
+hthy_ctec_late2 <- hthy_ctec_late %>%
+  mutate(multi_to_parse_ratio = SeuratProject_cTEC_late / hthy_cTEC_late)
+head(hthy_ctec_late2)
+plot(x = hthy_ctec_late2$hthy_cTEC_late, 
+     y = hthy_ctec_late2$SeuratProject_cTEC_late,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_late2 <- hthy_ctec_late2 |>
+  filter(multi_to_parse_ratio > 1.1)
+plot(x = hthy_ctec_late2$hthy_cTEC_late, 
+     y = hthy_ctec_late2$SeuratProject_cTEC_late,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_late2 <- hthy_ctec_late2 |>
+  filter(SeuratProject_cTEC_late > 1.2)
+plot(x = hthy_ctec_late2$hthy_cTEC_late, 
+     y = hthy_ctec_late2$SeuratProject_cTEC_late,
+     xlim = c(0,6),
+     ylim = c(0,6))
+
+
+# ==========
+
+# START SCRIPT 240312
+
+# test alternatively analysis sequence
+# copy idents to new column celltypes before merging > integrate >...>runUMAP
+
+# load data
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated-pre_label_transfer.rds")
+
+ht11.ref <- subset(ht11wi, orig.ident == "SeuratProject")
+ht11.query <- subset(ht11wi, orig.ident == "hthy")
+
+ht11.anchors <- FindTransferAnchors(reference = ht11.ref, 
+                                    query = ht11.query,
+                                    dims = 1:30, 
+                                    reference.reduction = "pca")
+predictions <- TransferData(anchorset = ht11.anchors, 
+                            refdata = ht11.ref$celltype, 
+                            dims = 1:30)
+ht11.query <- AddMetaData(ht11.query, metadata = predictions)
+
+# Unimodal UMAP Projection
+ht11.ref <- RunUMAP(ht11.ref, dims = 1:30, 
+                    reduction = "integrated.cca", 
+                    return.model = TRUE)
+ht11.query <- MapQuery(anchorset = ht11.anchors, 
+                       reference = ht11.ref, 
+                       query = ht11.query,
+                       refdata = list(celltype = "celltype"), 
+                       reference.reduction = "pca", reduction.model = "umap")
+
+test11.query <- ht11.query
+test11.ref <- ht11.ref
+
+# combine celltype and predicted.celltype columns into a new column called celltypes
+test11.query@meta.data <- test11.query@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+test11.ref@meta.data <- test11.ref@meta.data |>
+  mutate(celltypes = ifelse(is.na(celltype), predicted.celltype, celltype))
+
+# Idents(test11.query) <- "predicted.celltype"
+# Idents(test11.ref) <- "celltype"
+
+ht11wi.remerged <- merge(x = test11.query, y = test11.ref)
+ht11wi.remerged <- NormalizeData(ht11wi.remerged)
+ht11wi.remerged <- FindVariableFeatures(ht11wi.remerged)
+ht11wi.remerged <- ScaleData(ht11wi.remerged)
+ht11wi.remerged <- RunPCA(ht11wi.remerged, 
+                          features = VariableFeatures(object = ht11wi.remerged))
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5, 
+                                cluster.name = "unintegrated_clusters")
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                           reduction.name = "umap.unintegrated")
+
+ht11wi.remerged <- IntegrateLayers(object = ht11wi.remerged, 
+                                   method = CCAIntegration, 
+                                   orig.reduction = "pca", 
+                                   new.reduction = "integrated.cca",
+                                   verbose = FALSE)
+# 240207 layer integration took 6m 28s
+
+# re-join layers after integration
+ht11wi.remerged[["RNA"]] <- JoinLayers(ht11wi.remerged[["RNA"]])
+
+
+# analyze post integration
+ht11wi.remerged <- FindNeighbors(ht11wi.remerged, reduction = "integrated.cca",
+                                 dims = 1:30)
+ht11wi.remerged <- FindClusters(ht11wi.remerged, resolution = 0.5)
+ht11wi.remerged <- RunUMAP(ht11wi.remerged, dims = 1:30, 
+                           reduction = "integrated.cca")
+
+#plot graphs before combining sample IDs
+DimPlot(ht11wi, reduction = "umap", group.by = "sample")
+DimPlot(ht11wi, reduction = "umap", group.by = "batch")
+DimPlot(ht11wi, reduction = "umap", group.by = "samples")
+DimPlot(ht11wi, reduction = "umap", split.by = "samples")
+
+FeaturePlot(ht11wi, reduction = "umap", features = "AIRE", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PRSS16", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "PSMB11", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "LY75", split.by = "samples")
+FeaturePlot(ht11wi, reduction = "umap", features = "MKI67", split.by = "samples")
+
+
+#mtec.2 <- FindConservedMarkers(ht11wi.remerged, ident.1 = "mTEC II", 
+#                               grouping.var = "orig.ident", verbose = FALSE)
+#head(mtec.2)
+
+library(ggplot2)
+library(cowplot)
+theme_set(theme_cowplot())
+
+aggregate_ht11wi <- AggregateExpression(ht11wi.remerged, group.by = 
+                                          c("orig.ident", "celltypes"), 
+                                        return.seurat = TRUE)
+
+colnames(aggregate_ht11wi) <- gsub("-", "_", colnames(aggregate_ht11wi))
+colnames(aggregate_ht11wi) <- gsub("SeuratProject", "Multiome", colnames(aggregate_ht11wi))
+colnames(aggregate_ht11wi) <- gsub("hthy", "PARSE", colnames(aggregate_ht11wi))
+
+
+a <- GetAssayData(aggregate_ht11wi)
+hthy_ctec_early <- a[,c(1,15)]
+head(hthy_ctec_early)
+hthy_ctec_early <- as.data.frame(hthy_ctec_early)
+hthy_ctec_early2 <- hthy_ctec_early |>
+  mutate(multi_to_parse_ratio = Multiome_cTEC_early / PARSE_cTEC_early)
+head(hthy_ctec_early2)
+plot(x = hthy_ctec_early2$PARSE_cTEC_early, 
+     y = hthy_ctec_early2$Multiome_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_early2 <- hthy_ctec_early2 |>
+  filter(multi_to_parse_ratio > 1.5)
+plot(x = hthy_ctec_early2$PARSE_cTEC_early, 
+     y = hthy_ctec_early2$Multiome_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6))
+hthy_ctec_early3 <- hthy_ctec_early2 |>
+  filter(Multiome_cTEC_early > 1)
+plot(x = hthy_ctec_early3$PARSE_cTEC_early, 
+     y = hthy_ctec_early3$Multiome_cTEC_early,
+     xlim = c(0,6),
+     ylim = c(0,6),
+     )
+
+
+filter_diagonal <- function(combined_seurat, col_parse, col_multiome,
+                            diagonal_filter = -1, y_axis_filter = -1) {
+  a <- GetAssayData(combined_seurat)
+  a <- a[,c(col_parse,col_multiome)]
+  head(a)
+  a <- as.data.frame(a)
+  a2 <- a |>
+    mutate(multi_to_parse_ratio = a[,2]/ a[,1])
+  head(a2)
+  plot(x = a2[,1], 
+       y = a2[,2],
+       xlim = c(0,6),
+       ylim = c(0,6))
+  a2 <- a2 |>
+    filter(a2[,3] > diagonal_filter)
+  plot(x = a2[,1], 
+       y = a2[,2],
+       xlim = c(0,6),
+       ylim = c(0,6))
+  a3 <- a2 |>
+    filter(a2[,2] > y_axis_filter)
+  plot(x = a3[,1], 
+       y = a3[,2],
+       xlim = c(0,6),
+       ylim = c(0,6)
+  )
+  return(a3)
+}
+
+# test function
+filter_diagonal(aggregate_ht11wi, 1, 15, 1.5, 1)
+
+# build a data frame of common cell subset and the associated column numbers for
+# parse and multiome
+common_subsets <- colnames(aggregate_ht11wi)[1:14]
+common_subsets <- gsub("PARSE_", "", common_subsets)
+common_subsets <- gsub(" ", "_", common_subsets)
+common_subsets <- data.frame(common_subsets, col_parse = 1:14, col_multiome = c(15:27,29))
+
+# cTEC early
+cTEC_early <- filter_diagonal(aggregate_ht11wi, common_subsets[1,2], common_subsets[1,3], 1.2, 1.3)
+cTEC_early <- arrange(cTEC_early, -multi_to_parse_ratio)
+# cTEC late
+cTEC_late <- filter_diagonal(aggregate_ht11wi, common_subsets[2,2], common_subsets[2,3], 1.2, 1.3)
+cTEC_late <- arrange(cTEC_late, -multi_to_parse_ratio)
+# heteroTEC
+heteroTEC <- filter_diagonal(aggregate_ht11wi, common_subsets[3,2], common_subsets[3,3], 1.2, 1.3)
+heteroTEC <- arrange(heteroTEC, -multi_to_parse_ratio)
+# ionocyte I
+ionocyte_I <- filter_diagonal(aggregate_ht11wi, common_subsets[4,2], common_subsets[4,3], 1.2, 1.3)
+ionocyte_I <- arrange(ionocyte_I, -multi_to_parse_ratio)
+# ionocyte II
+ionocyte_II <- filter_diagonal(aggregate_ht11wi, common_subsets[5,2], common_subsets[5,3], 1.2, 1.3)
+ionocyte_II <- arrange(ionocyte_II, -multi_to_parse_ratio)
+# mcTEC
+mcTEC <- filter_diagonal(aggregate_ht11wi, common_subsets[6,2], common_subsets[6,3], 1.2, 1.3)
+mcTEC <- arrange(mcTEC, -multi_to_parse_ratio)
+# mTEC I
+mTEC_I <- filter_diagonal(aggregate_ht11wi, common_subsets[7,2], common_subsets[7,3], 1.2, 1.3)
+mTEC_I <- arrange(mTEC_I, -multi_to_parse_ratio)
+# mTEC II
+mTEC_II <- filter_diagonal(aggregate_ht11wi, common_subsets[8,2], common_subsets[8,3], 1.2, 1.3)
+mTEC_II <- arrange(mTEC_II, -multi_to_parse_ratio)
+# muscle
+muscle <- filter_diagonal(aggregate_ht11wi, common_subsets[9,2], common_subsets[9,3], 1.2, 1.3)
+muscle <- arrange(muscle, -multi_to_parse_ratio)
+# neuro
+neuro <- filter_diagonal(aggregate_ht11wi, common_subsets[10,2], common_subsets[10,3], 1.2, 1.3)
+neuro <- arrange(neuro, -multi_to_parse_ratio)
+# neuroendocrine I
+neuroendocrine_I <- filter_diagonal(aggregate_ht11wi, common_subsets[11,2], common_subsets[11,3], 1.2, 1.3)
+neuroendocrine_I <- arrange(neuroendocrine_I, -multi_to_parse_ratio)
+# neuroendocrine II
+neuroendocrine_II <- filter_diagonal(aggregate_ht11wi, common_subsets[12,2], common_subsets[12,3], 1.2, 1.3)
+neuroendocrine_II <- arrange(neuroendocrine_II, -multi_to_parse_ratio)
+# sTEC I
+sTEC_I <- filter_diagonal(aggregate_ht11wi, common_subsets[13,2], common_subsets[13,3], 1.2, 1.3)
+sTEC_I <- arrange(sTEC_I, -multi_to_parse_ratio)
+# transit_amplifying
+transit_amplifying <- filter_diagonal(aggregate_ht11wi, common_subsets[14,2], common_subsets[14,3], 1.2, 1.3)
+transit_amplifying <- arrange(transit_amplifying, -multi_to_parse_ratio)
+
+# cell subsets unique to multiome dataset: sTEC II, tuft
+
+# export gene names
+write.csv(cTEC_early, paste(getwd(), "/cTEC_early.csv", sep=""))
+write.csv(cTEC_late, paste(getwd(), "/cTEC_late.csv", sep=""))
+write.csv(heteroTEC, paste(getwd(), "/heteroTEC.csv", sep=""))
+write.csv(ionocyte_I, paste(getwd(), "/ionocyte_I.csv", sep=""))
+write.csv(ionocyte_II, paste(getwd(), "/ionocyte_II.csv", sep=""))
+write.csv(mcTEC, paste(getwd(), "/mcTEC.csv", sep=""))
+write.csv(mTEC_I, paste(getwd(), "/mTEC_I.csv", sep=""))
+write.csv(mTEC_II, paste(getwd(), "/mTEC_II.csv", sep=""))
+write.csv(muscle, paste(getwd(), "/muscle.csv", sep=""))
+write.csv(neuro, paste(getwd(), "/neuro.csv", sep=""))
+write.csv(neuroendocrine_I, paste(getwd(), "/neuroendocrine_I.csv", sep=""))
+write.csv(neuroendocrine_II, paste(getwd(), "/neuroendocrine_II.csv", sep=""))
+write.csv(sTEC_I, paste(getwd(), "/sTEC_I.csv", sep=""))
+write.csv(transit_amplifying, paste(getwd(), "/transit_amplifying.csv", sep=""))
+
+a <- transit_amplifying
+a <- a |>
+  filter(a[,2] >2, a[,1] < 1)
+plot(x = a[,1], y = a[,2],
+     xlim = c(0,6),
+     ylim = c(0,6))
+write.csv(a, paste(getwd(), "/transit_amplifying_more_filtered.csv", sep=""))
+
+
+
+#==============================
+
+# start script 240709
+# objective: load ht11 integrated data, do correlation analysis on entire sample instead of cell subsets
+
+# load ht11 dataset (live multiome and fixed parse already integrated)
+ht11wi <- readRDS(file = "data/rds_objects/240205_ht11_integrated.rds")
+
+# rejoin the layers after integration
+ht11wi[["RNA"]] <- JoinLayers(ht11wi[["RNA"]])
+
+# analyze post integration
+ht11wi <- FindNeighbors(ht11wi, reduction = "integrated.cca", dims = 1:30)
+ht11wi <- FindClusters(ht11wi, resolution = 0.5)
+ht11wi <- RunUMAP(ht11wi, dims = 1:30, reduction = "integrated.cca")
+
+# combine sample IDs because the multiome ID column is called 'batch' while parse ID column is called 'sample'
+ht11wi@meta.data <- ht11wi@meta.data |>
+  mutate(samples = ifelse(is.na(sample), batch, sample))
+
+
+# extract features list from parse as a character vector
+parse_features <- as.data.frame(ht11_sub@assays$RNA@features@dimnames[1])[,1]
+# extract features list from multiome as a character vector
+multiome_features <- as.data.frame(ref2@assays$RNA@counts@Dimnames[1])[,1]
+# might be better way: temp2 <- as.data.frame(reference@assays$RNA@counts@Dimnames[1])
+
+# extract features common in parse and multiome dataset
+common_features <- intersect(parse_features, multiome_features)
+# extract features unique to parse dataset
+#parse_unique <- parse_features[!(parse_features %in% multiome_features)]
+#multiome_unique <- multiome_features[!(multiome_features %in% parse_features)]
+# check to see if the unique sets are truly unique
+#sum(parse_unique %in% multiome_unique)
+# MYH16 is found only in parse dataset
+#"MYH16" %in% parse_features
+#"MYH16" %in% multiome_features
+# AL645608.1 is found only in multiome dataset
+#"AL645608.1" %in% parse_features
+#"AL645608.1" %in% multiome_features
+# export the list of unique genes from parse and multiome
+write.csv(parse_unique, file = "parse_unique_features.csv")
+write.csv(multiome_unique, file = "multiome_unique_features.csv")
+
+p1 <- CellScatter(ht11wi@meta.data$samples, "HT11", "20230505_YL01")
+
+
+
+
+
+
+# ===========================
+
+
+
+
+
+
+# start script 240724
+# objective: perform gene expression correlation using new annotations
+
+# Loading libraries and setting location paths
+library(Seurat)
+library(dplyr)
+library(Matrix)
+library(ggplot2)
+library(cowplot)
+library(patchwork)
+
+# remove all objects (variables, functions, etc.) from the current working 
+# environment or session.
+rm(list = ls())
+
+# data_path <- "/volume-general/analysis/data/pbmc/"
+# fig_path <- "/volume-general/analysis/figures/pbmc/seurat/"
+
+
+# Below we've included a few convenience functions for saving images and 
+# reading/writing your Seurat object to disk. When you're working with larger 
+# datasets, it's usually a good idea to save your progress after computationally 
+# intensive steps so you can back track if you wish to do so.
+
+# Convenience functions
+SaveFigure <- function(plots, name, type = "png", width, height, res){
+  if(type == "png") {
+    png(paste0(fig_path, name, ".", type),
+        width = width, height = height, units = "in", res = 200)
+  } else {
+    pdf(paste0(fig_path, name, ".", type),
+        width = width, height = height)
+  }
+  print(plots)
+  dev.off()
+}
+
+SaveObject <- function(object, name){
+  saveRDS(object, paste0(data_path, name, ".RDS"))
+}
+
+ReadObject <- function(name){
+  readRDS(paste0(data_path, name, ".RDS"))
+}
+
+
+# Reading in data
+
+# After reading in the data we'll perform basic filtering a on our expression 
+# matrix to remove low quality cells and uninformative genes. The parameter 
+# "min_genes" will keep cells that have at least 300 genes, and similarly, 
+# "min_cells" will keep genes that are expressed in at least 5 cells. 
+# Note: Seurat version 4.1 includes a convenience function to read Parse data from 
+# the DGE folder. If you would like to use this function, please skip the code
+# block below and see the section "Reading in data with Seurat >= 4.1"
+
+# read counts csv
+counts <- read.csv("rawdata/from sarah 240719_fixed_annotation/meyer_raw_no_qc_for_yong_counts.csv")
+
+# extract features from count dataframe
+features <- colnames(counts)
+# extract cell names from count dataframe
+cells <- counts[,1]
+# convert dataframe to matrix
+counts <- as.matrix(counts)
+
+# Setting column and rownames to expression matrix
+colnames(counts) <- features
+rownames(counts) <- cells
+# transpose count matrix
+counts <- t(counts)
+
+# Remove empty rownames, if they exist
+counts <- counts[(rownames(counts) != ""),]
+
+# Seurat version 5 or greater uses "min.features" instead of "min.genes"
+hthy <- CreateSeuratObject(counts, min.features = 100, min.cells = 2, 
+                           meta.data = cell_meta)
+
+
+
+#==========
+
+
+
+mat <- readMM(paste0(DGE_folder, "meyer_raw_no_qc_for_yong_counts.csv"))
+
+cell_meta <- read.delim(paste0(DGE_folder, "cell_metadata.csv"),
+                        stringsAsFactor = FALSE, sep = ",")
+genes <- read.delim(paste0(DGE_folder, "all_genes.csv"),
+                    stringsAsFactor = FALSE, sep = ",")
+
+cell_meta$bc_wells <- make.unique(cell_meta$bc_wells, sep = "_dup")
+rownames(cell_meta) <- cell_meta$bc_wells
+genes$gene_name <- make.unique(genes$gene_name, sep = "_dup")
+
+# Setting column and rownames to expression matrix
+colnames(mat) <- genes$gene_name
+rownames(mat) <- rownames(cell_meta)
+mat_t <- t(mat)
+
+# Remove empty rownames, if they exist
+mat_t <- mat_t[(rownames(mat_t) != ""),]
+
+# Seurat version 5 or greater uses "min.features" instead of "min.genes"
+hthy <- CreateSeuratObject(mat_t, min.features = 100, min.cells = 2, 
+                           meta.data = cell_meta)

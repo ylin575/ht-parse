@@ -2,6 +2,7 @@
 rawdata/
 data/
 tmp_fastqs/
+results/
 **/.DS_Store
 
 
