@@ -4,7 +4,7 @@
 
 # Except these files or directories:
 !.gitignore
-!scripts
+!scripts/**
 !README.md
 
 # ignore .DS_Store seen anywhere in the directory
