@@ -203,19 +203,19 @@ DimPlot(hthy, reduction = "umap.unintegrated", split.by = "orig.ident")
 
 
 #save before integration
-saveRDS(hthy, file = "data/rds_objects/250617_before_integration.rds")
-hthy <- readRDS("data/rds_objects/250617_before_integration.rds")
+saveRDS(hthy, file = "data/rds_objects/250617-all-cells-before-integration.rds")
+hthy <- readRDS("data/rds_objects/250617-all-cells-before-integration.rds")
 
 
 # perform integration on the merged samples; wi = with integration
 hthy <- IntegrateLayers(object = hthy, method = CCAIntegration, 
                                orig.reduction = "pca", 
                                new.reduction = "integrated.cca",
-                               verbose = TRUE) # 250617 took 1h 56m 47s
+                               verbose = TRUE) # 250617 took 2h 11m 16s
 
 # save object after integrating, before joining layers
-saveRDS(hthy, file = "data/rds_objects/250617-after-integration.rds")
-hthy <- readRDS("data/rds_objects/250617-after-integration.rds")
+saveRDS(hthy, file = "data/rds_objects/250617-all-cells-after-integration.rds")
+hthy <- readRDS("data/rds_objects/250617-all-cells-after-integration.rds")
 
 
 # rejoin the layers after integration
@@ -254,6 +254,39 @@ FeaturePlot(hthy, reduction = "umap", features = "ITGA6", split.by = "orig.ident
 FeaturePlot(hthy, reduction = "umap", features = "ITGB4", split.by = "orig.ident")
 FeaturePlot(hthy, reduction = "umap", features = "BCAM", split.by = "orig.ident")
 
+
+
+
+
+# subset hthy to get only the ragazzini data set
+hthy_rag <- subset(hthy, subset = hthy@meta.data$orig.ident == c("ctec",
+                                                                 "ctec.cd49f",
+                                                                 "mtec",
+                                                                 "mtec.cd49f"))
+
+# look at integrated umap plot by orig.ident
+DimPlot(hthy_rag, reduction = "integrated.cca", group.by = "orig.ident")
+DimPlot(hthy_rag, reduction = "integrated.cca", split.by = "orig.ident")
+
+
+#plot by reduction = "umap"
+DimPlot(hthy_rag, reduction = "umap", group.by = "orig.ident")
+DimPlot(hthy_rag, reduction = "umap", split.by = "orig.ident")
+
+# find feature, save as pdf at 28in by 4in
+FeaturePlot(hthy_rag, reduction = "umap", features = "AIRE", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "PRSS16", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "PSMB11", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "LY75", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "COL4A6", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "THY1", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "ITGA6", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "ITGB4", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "BCAM", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "NEUROD1", split.by = "orig.ident")
+FeaturePlot(hthy, reduction = "umap", features = "NEUROD1", split.by = "orig.ident")
+FeaturePlot(hthy_rag, reduction = "umap", features = "NEUROD4", split.by = "orig.ident")
+FeaturePlot(hthy, reduction = "umap", features = "NEUROD4", split.by = "orig.ident")
 
 
 
@@ -321,7 +354,10 @@ fig <- plot_ly(data = plot.data,
                           "khaki3",
                           "gray20",
                           "orange2",
-                          "royalblue4"),
+                          "royalblue4",
+                          "yellow3",
+                          "gray80",
+                          "darkorchid1"),
                type = "scatter3d", 
                mode = "markers", 
                marker = list(size = 5, width=2), # controls size of points
@@ -357,6 +393,7 @@ fig <- fig %>% layout(scene = list(xaxis=axx,yaxis=axy,zaxis=axz))
 fig_cube <- fig %>% layout(scene = list(xaxis=axx,yaxis=axy,zaxis=axz, aspectmode='cube')) # To maintain cubic aspect
 fig
 fig_cube
+saveRDS(fig, file = "data/rds_objects/250617-all-cells-after-integration-3d-plotly-object.rds")
 
 # Say you wanto make a gene-expression 3D plot, where you can plot gene expression against a color scale
 # Here using the same seurat object as above, we extract gene expression information for beta-actin 'ACTB'
